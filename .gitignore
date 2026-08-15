@@ -1,0 +1,6 @@
+node_modules/
+lib/
+coverage/
+vendor/
+.DS_Store
+*.log

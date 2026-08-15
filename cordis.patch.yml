@@ -1,0 +1,5 @@
+# dsh-turnbar bundle：向组合挂 Node half（数据层：session/event firehose → TurnStore sidecar）。
+# UI（进度条 + 预览卡）在 client half（D3/D4），经 conversation.composer.dock 插槽注入。
+- insert:
+    - id: dsh-turnbar
+      name: dsh-turnbar
