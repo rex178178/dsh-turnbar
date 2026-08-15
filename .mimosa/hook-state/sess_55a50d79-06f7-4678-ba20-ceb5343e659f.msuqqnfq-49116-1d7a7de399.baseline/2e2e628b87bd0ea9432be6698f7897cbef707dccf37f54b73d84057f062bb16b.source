@@ -47,11 +47,6 @@ export class TurnStore {
     if (event.type === 'turn/end' || event.type === 'session/title') this.save()
   }
 
-  /** 回填整会话（持久化层读取）：只进内存，不触发逐事件落盘。 */
-  ingestQuiet(event: SessionEventLike): void {
-    this.fold.push(event)
-  }
-
   get state(): SessionNavState {
     return this.fold.snapshot(this.opts.sessionId)
   }

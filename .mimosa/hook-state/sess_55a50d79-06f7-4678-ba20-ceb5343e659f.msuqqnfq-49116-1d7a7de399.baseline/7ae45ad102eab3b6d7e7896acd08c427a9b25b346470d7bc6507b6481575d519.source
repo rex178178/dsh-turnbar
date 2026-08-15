@@ -4,13 +4,13 @@
   "description": "A progress bar for your agent conversations — in-session turn navigation with hover previews for DeepSeek Harness",
   "type": "module",
   "license": "MIT",
-  "main": "lib/index.js",
+  "main": "lib/index.mjs",
   "files": ["lib", "cordis.patch.yml"],
   "publishConfig": {
     "access": "public"
   },
   "exports": {
-    ".": { "default": "./lib/index.js" },
+    ".": { "default": "./lib/index.mjs" },
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
@@ -39,5 +39,8 @@
     "tsdown": "^0.22.2",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }

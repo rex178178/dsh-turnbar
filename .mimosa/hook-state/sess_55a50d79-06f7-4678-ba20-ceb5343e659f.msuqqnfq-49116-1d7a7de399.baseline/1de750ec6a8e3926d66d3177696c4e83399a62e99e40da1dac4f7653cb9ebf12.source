@@ -105,7 +105,7 @@ export class SessionFold {
         if (draft === undefined) break
         // 排队中的用户消息被新轮认领：第一条是触发消息，其余是 steering。
         for (let i = 0; i < this.pendingUsers.length; i++) {
-          const line = this.pendingUsers[i]
+          const line = this.pendingUsers[i] ?? ''
           if (i === 0 && draft.userFirstLine === '') draft.userFirstLine = line
           else draft.steeringCount++
         }

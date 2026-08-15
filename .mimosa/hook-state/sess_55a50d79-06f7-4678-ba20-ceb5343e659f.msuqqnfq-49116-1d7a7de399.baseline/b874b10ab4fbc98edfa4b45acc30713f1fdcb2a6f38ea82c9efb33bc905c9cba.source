@@ -47,9 +47,10 @@ describe('SessionFold on sanitized real session', () => {
   it('captures token usage and file changes from tool calls', () => {
     expect(state.turns.some(turn => turn.tokenIn > 0)).toBe(true)
     expect(state.turns.some(turn => turn.tokenOut > 0)).toBe(true)
+    // 该真实会话未使用 str_replace_editor（fileToolCalls=0），文件改动路径聚合在
+    // turn-store.test 的合成用例中验证；此处验证计数守恒与路径来源约束。
     const fileTotal = state.turns.reduce((n, turn) => n + turn.fileChanges.length, 0)
-    expect(fileTotal).toBeGreaterThan(0)
-    expect(fileTotal).toBeLessThanOrEqual(fixture.stats.fileToolCalls)
+    expect(fileTotal).toBe(fixture.stats.fileToolCalls)
     expect(state.turns.every(turn => turn.fileChanges.every(f => f.startsWith('/synth/')))).toBe(true)
   })
 

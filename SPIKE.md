@@ -82,8 +82,16 @@
 | 跳转滚动 | ⚠️ 基本正路 | 无虚拟化但需先 loadOlder；follow 陷阱有解，Q4 |
 | 探测/降级 | ✅ 可实现 | 事件名/服务名/插槽名均可 `typeof` 探测，失败走 L1–L4 |
 
-## D2 遗留验证项（3 个，均不阻塞 D2 开工）
+## D2 遗留验证项（✅ 2026-08-16 D2 已全部落定）
 
-1. loadOlder 的编程式触发（DOM 按钮点击 vs conversation 契约服务，`packages/client/runtime/src/client/contract/conversation.ts:92-130` 有 chat node 的 `location.turn/anchorSeq` 线索）。
-2. `ctx.sessionQuery`（outline 用）与 `ctx.sessionPersistence`（core 定义）的关系与正确用法；实时增量的推送方式（轮询 vs SSE）。
-3. React（平台提供）vs Web Component 的最终选型——倾向直接用平台 React（插槽组件即 React 组件，省一层桥）。
+1. **loadOlder**：它是客户端 session 契约的一等方法——`loadOlder(): Promise<void>`（`packages/client/runtime/src/client/contract/session.ts:74`，实现 `sessions/session.ts:377`）。D3 接 UI 时沿 ChatView 同源（useSession 那套 runtime 契约）调用即可，另保底 DOM 兜底（触发"加载更早"按钮）。
+2. **sessionQuery**：确认为 host 侧服务（`packages/context/session-reference/src/index.ts:71`，`static inject = ['sessionQuery']`），已见方法 `listSessions` / `readTitleSnapshots` / `readSurface`（outline 笔记里的 readSession/listEvents 是转述名）。D5 回填以 core 的 `ctx.sessionPersistence` 为权威，sessionQuery 作备选。
+3. **UI 框架选型锁定：平台 React**。插槽组件类型 `SlotComponent<P> = (props: P) => ReactNode`（`packages/client/ui-slots/src/index.ts:370`），React 18 由 client runtime 平台冻结表提供，插槽组件天然是 React——不引入 Web Component 桥。
+4. **（新增）文件工具**：dsh 的文件编辑工具为 `str_replace_editor`（参数 `path`，`command: view|create|...`，`view` 只读），已录入 fold 的 FILE_TOOLS 注册表。
+
+## D2 交付快照（2026-08-16，commit c1c5e03）
+
+- 数据层落地：`src/core/fold.ts`（SessionFold 纯函数折叠）+ `src/core/turn-store.ts`（原子 JSONL sidecar，`$DSH_HOME/plugins/dsh-turnbar/sessions/`）+ `src/core/first-line.ts`（markdown 剥离与首句截断）；node half 订阅 `session/event`，全异常吞没。
+- 夹具：真实 5.9MB 会话脱敏为 21195 事件 / 22 轮（`test/fixtures/long-session.json`，`scripts/make-fixture.mjs` 可再生）。
+- 测试：vitest 20/20 绿（轮次守恒 22、工具调用守恒 401、用户消息归属守恒 43 = 触发 + steering + dangling）；tsc --noEmit 干净；tsdown 双 half 产物 lib/index.mjs + lib/client.js。
+- 工程注意：pnpm 11 需 `pnpm-workspace.yaml` `allowBuilds: esbuild: true`（与 dsh profile 同机制）；vitest 需限定 include（否则扫进 vendor/ 的官方测试）。
