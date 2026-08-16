@@ -10,6 +10,12 @@ export interface TurnLite {
   readonly running?: boolean
 }
 
+/** 进度条可见阈值：≥1 轮显示（单轮会话也显示 1 段，0 轮新会话隐藏）。 */
+export const MIN_VISIBLE_TURNS = 1
+export function shouldShowTurnbar(turnCount: number): boolean {
+  return turnCount >= MIN_VISIBLE_TURNS
+}
+
 /** 幽灵轮：无用户首句、无助手首段、无工具调用的空轮（如被终止的系统注入轮）。
  * 进度条上置灰、不可点击，hover 提示"已终止"。 */
 export function isEmptyTurn(t: TurnLite): boolean {

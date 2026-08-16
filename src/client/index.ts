@@ -11,7 +11,7 @@
  * 悬停/scrub/playhead 状态全部走命令式 DOM（ref + 单例），指针/滚动零 React 重渲染。
  */
 import React from 'react'
-import { isEmptyTurn, planSegments, type SegmentSpec } from './grouping'
+import { isEmptyTurn, planSegments, shouldShowTurnbar, type SegmentSpec } from './grouping'
 import { buildCardModel, buildGroupCardModel, ensureCard, type CardHandle, type CardTurn } from './card'
 import { disposeToast, initToast, showReturnToast } from './toast'
 import { disposeSearch, toggleSearch } from './search'
@@ -157,6 +157,37 @@ const CSS = `
 }
 @media (prefers-reduced-motion: reduce) {
   [data-turnbar-seg], [data-turnbar-card], [data-turnbar-flash] { transition: none; animation: none; }
+}
+/* ── 共存层：TurnBar 在多插件 dock 中独占整行 ──
+   包装层默认 display:contents（官方）；live-stats 等插件会把它改成 flex row。
+   我们无条件把包装层定义为「横向、可换行」，TurnBar 以 100% 独占一行，
+   其余条目（官方 StatsLine / TPS / 任意第三方）共享第一行（超过 2 个非
+   turnbar 条目时各自限宽 620px，避免把官方统计行挤没）。
+   特异性：包装层 (0,3,1) > live-stats (0,2,1)；bar 规则 (0,4,1) > live-stats
+   兄弟误伤规则 (0,3,1)。全部用 !important 压过内联/插件样式。 */
+div[data-slot="conversation.composer.dock"][data-slot="conversation.composer.dock"]:has(> [data-turnbar]) {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  align-items: center;
+  justify-content: center;
+  width: 100% !important;
+  box-sizing: border-box;
+}
+div[data-slot="conversation.composer.dock"][data-slot="conversation.composer.dock"] > [data-turnbar][data-turnbar] {
+  flex: 0 0 100% !important;
+  order: 1000;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 3px 8px !important;
+  box-sizing: border-box;
+}
+div[data-slot="conversation.composer.dock"][data-slot="conversation.composer.dock"]:has(> [data-turnbar]):has(> *:not([role="tooltip"]):nth-child(3)) > *:not([data-turnbar]):not([role="tooltip"]) {
+  flex: 0 1 auto;
+  max-width: 620px;
+  min-width: 0;
 }
 `
 
@@ -563,7 +594,7 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     return () => window.removeEventListener('keydown', onGlobalKey, true)
   }, [sessionId])
 
-  if (turns.length < 2) return null
+  if (!shouldShowTurnbar(turns.length)) return null
   const segments: SegmentSpec[] = planSegments(turns)
 
   const clearHoverTimer = (): void => {

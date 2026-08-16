@@ -106,6 +106,14 @@ Built on paths others paved first — with gratitude:
 Tested against dsh `0.1.0-rc.5` / `0.1.0-rc.6` (web profile). Works with the
 official web UI's `conversation.composer.dock` slot; no patches, no UI hacks.
 
+Coexists with other plugins that share the same `composer.dock` slot —
+[dsh-web-ui-all](https://www.npmjs.com/package/@linxin666/dsh-web-ui-all) and its
+included dsh-live-stats / dsh-aionui-panel. A built-in co-existence CSS layer
+(`v0.2.2+`) forces the dock into a wrapping row so the TurnBar always owns its own
+full-width line while the official StatsLine sits beside any third-party entries,
+so the bar is never squeezed sideways. Single-turn sessions now show a one-segment
+progress bar too (only brand-new 0-turn sessions stay hidden).
+
 | dsh version | status |
 |---|---|
 | ≥ 0.1.0-rc.5 (web) | ✅ full features |

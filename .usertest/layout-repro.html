@@ -1,0 +1,101 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>turnbar dock coexistence repro</title>
+<style>
+/* ── Mock of the official InputBar .root (flex column, center, no gap) ── */
+.root {
+  display: flex; flex-direction: column; align-items: center;
+  width: 900px; padding: 0 32px 8px; box-sizing: border-box;
+  background: #1a1a1e; border-radius: 22px; border: 1px solid #333;
+}
+/* ── Real turnbar CSS, verbatim from src/client/index.ts ── */
+[data-turnbar] {
+  position: relative;
+  display: flex; align-items: center; gap: 2px;
+  width: 100%; padding: 3px 8px; box-sizing: border-box;
+  user-select: none; -webkit-user-select: none; touch-action: none;
+}
+[data-turnbar-playhead] {
+  position: absolute; top: 3px; bottom: 3px; left: 8px; width: 4px;
+  z-index: 1; pointer-events: none; opacity: 0; border-radius: 3px;
+}
+[data-turnbar-seg] {
+  flex: 1 1 0; min-width: 2px; height: 8px; padding: 0; border: none;
+  border-radius: 2px; cursor: pointer; background: rgba(128, 128, 140, .35);
+}
+[data-turnbar-seg].has-user { background: rgba(128, 128, 140, .6); }
+[data-turnbar-search-btn] {
+  flex: 0 0 auto; width: 24px; height: 14px; padding: 0; border: none;
+  border-radius: 3px; cursor: pointer; background: transparent;
+  color: #888;
+}
+/* ── Real StatsLine.module.css ── */
+.stats-root {
+  display: block; text-align: center;
+  max-width: var(--dsh-chat-content-width, 720px);
+  width: 100%; margin: 0 auto; box-sizing: border-box;
+  padding: 4px calc(32px + 16px) 0px;
+  font-size: 12px; line-height: 20px; color: #999;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* ── Real dsh-live-stats MERGE_CSS, verbatim from the installed bundle ── */
+[data-dsh-live-tps] { align-self: center; }
+div[data-slot="conversation.composer.dock"]:has(> [data-dsh-live-tps]) {
+  display: flex !important;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+div[data-slot="conversation.composer.dock"] > *:not([role="tooltip"]):has(+ [data-dsh-live-tps], + [role="tooltip"] + [data-dsh-live-tps]) {
+  width: auto;
+  max-width: 620px;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 0 0;
+  flex: 0 1 auto;
+}
+div[data-slot="conversation.composer.dock"] > * + [data-dsh-live-tps] { flex: 0 0 auto; }
+div[data-slot="conversation.composer.dock"] > * + [data-dsh-live-tps]::before {
+  content: '\B7'; color: #666; margin: 0 10px;
+}
+div[data-slot="conversation.composer.dock"] > * + [data-dsh-live-tps]:empty::before { content: none; }
+div[data-slot="conversation.composer.dock"] > [role="tooltip"] {
+  width: max-content; max-width: calc(100vw - 32px);
+}
+</style></head>
+<body>
+<div class="root" id="root">
+  <div data-slot="conversation.composer.dock" style="display: contents" id="dock">
+    <div class="stats-root" id="stats">22 轮 · 6,432 tokens · 4 文件</div>
+    <div data-turnbar="" id="bar">
+      <div data-turnbar-playhead=""></div>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-seg=""></button>
+      <button type="button" data-turnbar-seg="" class="has-user"></button>
+      <button type="button" data-turnbar-search-btn="">⌕</button>
+    </div>
+    <div data-dsh-live-tps="">· 12.3 tok/s</div>
+  </div>
+</div>
+</body></html>

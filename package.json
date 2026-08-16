@@ -1,6 +1,6 @@
 {
   "name": "dsh-turnbar",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A progress bar for your agent conversations — in-session turn navigation with hover previews for DeepSeek Harness",
   "keywords": [
     "dsh",

@@ -92,6 +92,12 @@ dsh 发布头四天里涌进来 9 个导航插件，但清一色是"导航轨 / 
 已在 dsh `0.1.0-rc.5` / `0.1.0-rc.6`（web profile）实测。挂在官方
 `conversation.composer.dock` 插槽上，无 patch、无 UI hack。
 
+和其他占用同一 `composer.dock` 插槽的插件（[dsh-web-ui-all](https://www.npmjs.com/package/@linxin666/dsh-web-ui-all)
+及其内含的 dsh-live-stats / dsh-aionui-panel）可以同槽共存：内置的**共存 CSS 层**
+（v0.2.2+）把 dock 强制成可换行的行排，进度条永远独占自己一整行，官方统计行仍
+靠在任意第三方条目旁边，进度条绝不被挤扁。单轮会话现在也显示一条 1 段进度条
+（只有全新的 0 轮会话保持隐藏）。
+
 ## Roadmap
 
 - v1.0：章节自动分段（任务边界）、书签、token/上下文余量仪表

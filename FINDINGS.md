@@ -95,3 +95,14 @@
 ## 6. Go / No-Go
 
 **GO**。差异化组合成立、全部技术依赖有官方正路（见 SPIKE.md）、测试数据在手、命名可落。唯一红线：D7 不动摇；若 D5 卡/scrub 未达标按保险丝砍 scrub 先发。
+
+## 7. D8 追加 · web-ui-all 同槽冲突实证与 live-stats 模式借鉴（v0.2.2 · 2026-08-16）
+
+- 安装 dsh-web-ui-all（聚合包，含 dsh-live-stats / dsh-aionui-panel）后 TurnBar 被挤到 ~82px（实测）。
+- 根因：live-stats 的 `MERGE_CSS` 用 `:has(> [data-dsh-live-tps])` 把 `conversation.composer.dock` 包装层
+  强制改为 flex-row nowrap，且其兄弟选择器按 DOM 相邻匹配误中 TurnBar（限宽 620px + 剥 padding）。
+- 借鉴：live-stats 用 `:has()` 锚定 + `!important` + 兄弟选择器把自家条目变成紧凑行内单元，但只考虑
+  了自己和官方条目；TurnBar 升级为**通用共存层**（更高特异性 + `!important` 同时压过包装层 flex 与
+  兄弟误伤规则），无 JS、无 MutationObserver，确定性方案。
+- 验收：布局重现台场景 B/C/D `fullWidth===true` 且场景 C stats 保持 720；真机 profile turnbar-compat
+  验证 ≥2 轮/1 轮/0 轮行为与交互冒烟均通过。

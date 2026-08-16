@@ -534,6 +534,25 @@ dsh-turnbar/
 | 17 | 接洽竞品/合集作者时机 | 发布前 / 发布后 / 无所谓 | **无所谓 → 降为可选动作**：发布后随缘一条 issue/私信说明互通意向即可，不阻塞任何节点；发布前打招呼仍是更周全的做法（避免对照表"公开打脸"观感、探互操作），愿意做就做 | 生态关系 |
 | 18 | demo 物料与生成器 | 随仓库 / 不做 / 截图即可 | **截图即可 → 不做独立生成器与 demo 视频**：README 用 2~3 张标注截图（D7 walkthrough 顺手拍）；测试夹具改为录制真实会话事件，500 轮级用例在测试内拼接；可选升级＝⌘⇧5 随手录 15s scrub 屏录 | 工程 / 演示 |
 
+### 11.3 兼容性改造决策记录（v0.2.2 · 2026-08-16）
+
+**问题**：安装 dsh-web-ui-all（聚合包含 dsh-live-stats、dsh-aionui-panel）后 TurnBar 被挤到 ~82px（真 bug）；单轮（<2 turns）会话被有意隐藏（非 bug，但用户决定改为单轮也显示）。
+
+**根因（已实证，见 §2.1）**：官方 `conversation.composer.dock` 是 list 槽，被 live-stats 的 `MERGE_CSS`
+（`div[data-slot="conversation.composer.dock"]:has(> [data-dsh-live-tps])` + 兄弟选择器）改成
+flex-row nowrap，[StatsLine, TurnBar, TPS] 挤一行，TurnBar `width:100%` 与 StatsLine 各按 shrink
+均分被压到最小内容宽；额外陷阱是 live-stats 兄弟规则按 DOM 相邻匹配误中 TurnBar（限宽 620px + 剥 padding）。
+
+**决策**：TurnBar 是唯一需要"独占整行"的同槽插件，自带一条**共存 CSS 层**（§3.1），用更高特异性
+（包装层 (0,3,1)、bar 规则 (0,4,1)）+ `!important` 同时压过包装层 flex 规则与兄弟误伤规则，
+无 JS / MutationObserver / 循环重挂。单轮可见阈值改为 `turns.length < 1`（抽成 grouping.ts 的
+`MIN_VISIBLE_TURNS` / `shouldShowTurnbar` 纯函数），0 轮新会话仍隐藏。
+
+**验收结论**：`pnpm test`（含新增 shouldShowTurnbar 边界 + planSegments n=1 用例）全绿、
+`tsc --noEmit` 零错误、`pnpm build` 产物含共存层（grep lib/client.js 验证）、确定性布局重现台
+（`.usertest/cdp-measure.mjs`）场景 B/C/D `fullWidth===true` 且场景 C stats 保持 720、真机 profile
+`turnbar-compat`（端口 8791）验证 ≥2 轮 fullWidth+segs≥2、1 轮 segs==1、0 轮 bar 不存在、交互冒烟通过。
+
 ---
 
 *附：本文生态事实检索来源（2026-08-16）：[vlln/dsh-navbar @ dshplugin.dev](https://dshplugin.dev/plugins/vlln-dsh-navbar) · [vlln/dsh-navbar @ dshplugins.cc](https://www.dshplugins.cc/en/plugins/dsh-navbar) · [dsh-turn-navigator @ dshbase](https://dshbase.com/plugins/dsh-turn-navigator/) · [DSH Plugin Store 1080+ 报道](https://ai-engineering-trend.medium.com/community-built-plugin-store-for-deepseek-hits-1-080-plugins-on-github-25c7c7977e53) · [deepseek.com/harness](https://deepseek.com/harness)*

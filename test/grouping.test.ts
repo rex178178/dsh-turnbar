@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planSegments, segmentCenterPercent, type TurnLite } from '../src/client/grouping'
+import { MIN_VISIBLE_TURNS, planSegments, segmentCenterPercent, shouldShowTurnbar, type TurnLite } from '../src/client/grouping'
 
 const mk = (n: number, user = true): TurnLite[] =>
   Array.from({ length: n }, (_, i) => ({ index: i + 1, userFirstLine: user ? `u${i}` : '' }))
@@ -53,6 +53,31 @@ describe('planSegments', () => {
   it('isEmptyTurn: tool-only turn is not ghost', () => {
     const t: TurnLite = { index: 1, userFirstLine: '', assistantFirstLine: '', toolCallCount: 5 }
     expect(planSegments([t])[0]?.ghost).toBe(false)
+  })
+
+  it('single turn (n=1) produces one #1 segment (v0.2.2 single-turn visibility)', () => {
+    const segs = planSegments(mk(1))
+    expect(segs).toHaveLength(1)
+    expect(segs[0]).toMatchObject({ kind: 'turn', from: 1, to: 1, label: '#1', hasUser: true })
+    expect(segs[0]?.turns).toHaveLength(1)
+  })
+})
+
+describe('shouldShowTurnbar / MIN_VISIBLE_TURNS (v0.2.2 threshold refactor)', () => {
+  it('MIN_VISIBLE_TURNS is 1', () => {
+    expect(MIN_VISIBLE_TURNS).toBe(1)
+  })
+  it('0 turns -> hidden', () => {
+    expect(shouldShowTurnbar(0)).toBe(false)
+  })
+  it('1 turn (boundary) -> shown', () => {
+    expect(shouldShowTurnbar(1)).toBe(true)
+  })
+  it('22 turns -> shown', () => {
+    expect(shouldShowTurnbar(22)).toBe(true)
+  })
+  it('negative count -> hidden', () => {
+    expect(shouldShowTurnbar(-1)).toBe(false)
   })
 })
 
