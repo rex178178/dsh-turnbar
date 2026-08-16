@@ -99,6 +99,14 @@
 
 
 
+## D5 交付快照（2026-08-16，commit e9f158a；真机 22 轮会话验证通过）
+
+- playhead 阅读位置指示：视口中央最近的 `[data-turn-tail]` → 分段中心百分比 → transform 位移（80ms linear，GPU 合成）；rAF 节流挂 scroller scroll + resize + 数据变化；无已加载轮尾时隐藏。真机：初始在最后一段（97.7%），跳转后重绘到目标轮（第 3 段 → 107px）。
+- Esc 返回原位 toast（`src/client/toast.ts` 单例）：跳转后弹「已定位 #N · Esc 返回原位」，点击或 Esc 精确恢复跳转前 scrollTop（真机 6522 → 10130 → 6522），5s 自动消失；输入框聚焦时不劫持 Esc；位移 <8px 不弹（原地跳转不打扰）。
+- **D5 两个自查 bug（均在真机测试当场发现）**：① playhead hooks 放在了条件 return 之后——数据 0→N 到达时 hook 数变化，组件整体静默死亡（D4 教训的重演，hooks 恒在 return 前已是硬规则）；② toast 的位移判定写在 jumpToRow 之前——比较时滚动还没发生，差值恒 0，toast 永不出现（判定移到跳转后）。
+- 降级：L2（persistence.inspect 抛错 → 路由 404 不崩）单测覆盖；client 全链路异常吞没保持。L4 停用横幅决策：v0.1 不做（静默隐藏即优雅），README 声明。
+- IAB 备忘补充：CUA `scroll` 在大会话下偶发 no-op（wheel 也缺），需要真实滚动时用"点击分段跳转"制造；playhead/toast 均可通过 getAttribute('style')/locator 读回验证。
+
 ## D3 交付快照（2026-08-16，真机 dsh 0.1.0-rc.6 实测通过）
 
 **闭环验证**：隔离测试 profile（`~/.dsh/profiles/turnbar-test`，插件以 link 安装）+ 真实 16 轮历史会话——进度条渲染 16 段全量图；点击第 1 段自动分页加载（turn-tail 5→16）、滚动跳转、2.5s flash 高亮命中早期轮用户行。
