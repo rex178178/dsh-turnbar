@@ -13,25 +13,27 @@ preview any turn, drag to scrub, click to jump, `Esc` to come back.
 
 ## Install
 
-Two prerequisites: a working `dsh` on your PATH (`dsh --version` ≥ 0.1.0-rc.5),
-and the profile you actually launch the web UI from. Then:
+Easiest is the visual market [dshmarket](https://github.com/dsh-market/dsh-market)
+inside dsh (search "turnbar", one click). While our market listing is pending,
+install from the command line:
 
 ```sh
 dsh plugin --profile web add dsh-turnbar
 ```
 
-Restart the web app, open any session, and the bar appears above the input box.
+Two things worth reading before you paste that anywhere:
+
+- It's a command for **your macOS Terminal app (Terminal.app)** — *not* the dsh
+  chat input box. Open Terminal and run `dsh --version`: a version ≥ 0.1.0-rc.5
+  means you're good; `command not found` means dsh itself isn't on your command
+  line (e.g. you launch it another way) — install dsh properly first.
+- **Restart the web app** afterwards for it to take effect. A brand-new profile
+  only gets the base bundle, *not* the web UI (`@deepseek-ai/dsh-web-app`) — install
+  into the profile you already run, or add it afterwards with
+  `dsh plugin --profile <name> add @deepseek-ai/dsh-web-app`.
+
 Zero config. Historical sessions are backfilled automatically, so the bar always
 shows the **whole** conversation, not just what's loaded.
-
-Two gotchas worth knowing up front:
-
-- If you install into a **brand-new profile**, the command creates the profile with
-  the base bundle only — **no web UI** (`@deepseek-ai/dsh-web-app`). Install into the
-  profile you already run, or add the web app bundle afterwards
-  (`dsh plugin --profile <name> add @deepseek-ai/dsh-web-app`).
-- If `dsh` itself isn't found (command not found), install dsh first — plugins
-  install into it.
 
 ![jump with highlight](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-jump.png)
 

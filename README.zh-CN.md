@@ -12,24 +12,24 @@ dsh-turnbar 给 DeepSeek Harness 的对话区加了一条视频播放器式的�
 
 ## 安装
 
-先确认两件事：**终端里有 `dsh` 命令**（`dsh --version` 能输出版本，且 ≥ 0.1.0-rc.5），
-以及**你平时就是用它启动 web 的**。然后：
+最省事的是用 dsh 里的可视化市场 [dshmarket](https://github.com/dsh-market/dsh-market)
+（搜「turnbar」一键安装）。市场收录申请中，收录前用命令行装：
 
 ```sh
 dsh plugin --profile web add dsh-turnbar
 ```
 
-装完**重启 web 实例**，打开任意会话，进度条就出现在输入框上方。零配置。
+⚠️ 两个点先看清楚，能少走弯路：
 
-两个常见坑，提前说清楚：
-
-- 如果你是给一个**全新的 profile** 安装，命令会自动建 profile，但只带基础包、**不含 web UI**
-  （`@deepseek-ai/dsh-web-app`）。这种情况请装进你正在用的 web profile，或装完再手动
+- 这条命令是在 **macOS 的「终端」App（Terminal.app）** 里运行的，**不是在 dsh 的
+  聊天输入框里**。打开终端先输 `dsh --version` 回车：显示版本号（≥ 0.1.0-rc.5）就没问题；
+  如果提示 command not found，说明 dsh 本体没有装到命令行（比如你是通过别的方式启动 dsh 的），
+  先按官方文档装好 dsh，再执行上面的安装命令。
+- 装完要**重启 web 实例**才生效。给全新 profile 安装时，命令只带基础包、不含 web UI
+  （`@deepseek-ai/dsh-web-app`）——请装进你正在用的 web profile，或装完再补
   `dsh plugin --profile <名字> add @deepseek-ai/dsh-web-app`。
-- 如果 `dsh` 命令本身不存在（提示 command not found），先按官方方式安装 dsh 本体，
-  插件才有地方可装。
 
-历史会话会自动回填，进度条永远显示**完整**会话，而不是只显示当前已加载的部分。
+零配置。历史会话自动回填，进度条永远显示**完整**会话，而不是只显示当前已加载的部分。
 
 ![跳转高亮](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-jump.png)
 
