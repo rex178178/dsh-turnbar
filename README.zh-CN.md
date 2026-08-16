@@ -1,12 +1,15 @@
 # dsh-turnbar
 
+**[English](README.md) | [简体中文](README.zh-CN.md)**
+
+
 > 给你的 agent 会话装上视频进度条。
 
 长会话很强大——直到你需要找回"80 轮之前提过的那条要求"。原生滚动条只能靠猜。
 dsh-turnbar 给 DeepSeek Harness 的对话加上一条视频风格的进度条：悬停预览任意一轮、
 拖动扫过、点击直达、`Esc` 返回原位。
 
-![悬停预览](docs/demo-hover.png)
+![悬停预览](https://cdn.jsdelivr.net/gh/rex178178/dsh-turnbar@main/docs/demo-hover.png)
 
 **安装**（dsh ≥ 0.1.0-rc.5）：
 
@@ -17,7 +20,7 @@ dsh plugin --profile web add dsh-turnbar
 重启 web 应用，打开任意会话，进度条就出现在输入框上方。零配置。历史会话自动回填，
 进度条永远显示**完整**会话，而不是只显示已加载的部分。
 
-![跳转高亮](docs/demo-jump.png)
+![跳转高亮](https://cdn.jsdelivr.net/gh/rex178178/dsh-turnbar@main/docs/demo-jump.png)
 
 ## 功能
 
@@ -79,4 +82,4 @@ pnpm build       # tsdown：lib/index.mjs（node 半区）+ lib/client.js（web 
 
 ## License
 
-MIT，与 dsh 一致。 [English](README.md)
+MIT。

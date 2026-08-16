@@ -1,5 +1,8 @@
 # dsh-turnbar
 
+**[English](README.md) | [简体中文](README.zh-CN.md)**
+
+
 > A progress bar for your agent conversations.
 
 Long agent sessions are productive — until you need to find *that one requirement
@@ -7,7 +10,7 @@ you mentioned 80 turns ago*. Native scrollbars make you guess and re-scroll.
 dsh-turnbar gives your DeepSeek Harness chat a video-style progress bar: hover to
 preview any turn, drag to scrub, click to jump, `Esc` to come back.
 
-![hover preview](docs/demo-hover.png)
+![hover preview](https://cdn.jsdelivr.net/gh/rex178178/dsh-turnbar@main/docs/demo-hover.png)
 
 **Install** (dsh ≥ 0.1.0-rc.5):
 
@@ -19,7 +22,7 @@ That's it — restart the web app, open any session, and the bar appears above t
 input box. Zero config. Historical sessions are backfilled automatically, so the
 bar always shows the **whole** conversation, not just what's loaded.
 
-![jump with highlight](docs/demo-jump.png)
+![jump with highlight](https://cdn.jsdelivr.net/gh/rex178178/dsh-turnbar@main/docs/demo-jump.png)
 
 ## Features
 
@@ -97,4 +100,4 @@ composer dock slot. All dsh API contact is confined to `src/platform/dsh/`.
 
 ## License
 
-MIT — same as dsh. [简体中文](README.zh-CN.md)
+MIT — same as dsh.
