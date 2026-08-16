@@ -2,7 +2,14 @@
   "name": "dsh-turnbar",
   "version": "0.2.0",
   "description": "A progress bar for your agent conversations — in-session turn navigation with hover previews for DeepSeek Harness",
-  "keywords": ["dsh", "deepseek-harness", "plugin", "navigation", "progress-bar", "conversation"],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "navigation",
+    "progress-bar",
+    "conversation"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/rex178178/dsh-turnbar"
@@ -12,20 +19,31 @@
   "type": "module",
   "license": "MIT",
   "main": "lib/index.mjs",
-  "files": ["lib", "cordis.patch.yml"],
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "docs"
+  ],
   "publishConfig": {
     "access": "public"
   },
   "exports": {
-    ".": { "default": "./lib/index.mjs" },
+    ".": {
+      "default": "./lib/index.mjs"
+    },
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
-      "inject": ["@deepseek-ai/dsh-client-runtime", "@deepseek-ai/dsh-client-ui-primitives"],
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ],
       "platform": "web"
     }
   },
@@ -48,6 +66,8 @@
     "vitest": "^3.0.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
