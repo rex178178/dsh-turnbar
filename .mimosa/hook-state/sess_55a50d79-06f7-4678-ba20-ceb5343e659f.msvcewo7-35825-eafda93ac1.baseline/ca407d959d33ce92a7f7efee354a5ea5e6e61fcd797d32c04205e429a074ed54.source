@@ -55,6 +55,11 @@ window.__ModuleLoader__.load({
 			}
 			return segments;
 		}
+		/** 第 index 段（0-based）中心的水平百分比位置（0–100），playhead 定位用。 */
+		function segmentCenterPercent(index, count) {
+			if (count <= 0) return 0;
+			return (Math.max(0, Math.min(count - 1, index)) + .5) / count * 100;
+		}
 		//#endregion
 		//#region src/client/card.ts
 		function formatRelativeTime(at, now = Date.now()) {
@@ -167,23 +172,128 @@ window.__ModuleLoader__.load({
 			};
 		}
 		//#endregion
+		//#region src/client/toast.ts
+		/**
+		* 跳转返回 toast（GitHub 跳转线范式，PLAN §5.2）：跳转成功后左下角提示
+		* 「已定位 #N · Esc 返回原位」，点击或按 Esc 回到跳转前位置，5s 自动消失。
+		* 单例 DOM；输入框聚焦时不劫持 Esc。
+		*/
+		const TOAST_ID = "dsh-turnbar-toast";
+		const state = {
+			el: null,
+			timer: null,
+			onReturn: null
+		};
+		function ensureEl() {
+			if (state.el !== null && state.el.isConnected) return state.el;
+			if (typeof document === "undefined") return null;
+			const existing = document.getElementById(TOAST_ID);
+			if (existing !== null) {
+				state.el = existing;
+				return state.el;
+			}
+			const el = document.createElement("div");
+			el.id = TOAST_ID;
+			el.setAttribute("data-turnbar-toast", "");
+			el.setAttribute("role", "status");
+			document.body.appendChild(el);
+			state.el = el;
+			return el;
+		}
+		function isEditable(target) {
+			if (target === null) return false;
+			const el = target;
+			const tag = el.tagName;
+			return tag === "TEXTAREA" || tag === "INPUT" || el.isContentEditable === true;
+		}
+		function showReturnToast(label, onReturn) {
+			const el = ensureEl();
+			if (el === null) return;
+			state.onReturn = onReturn;
+			el.replaceChildren();
+			const text = document.createElement("span");
+			text.textContent = `已定位 ${label}`;
+			const hint = document.createElement("span");
+			hint.className = "tb-toast-return";
+			hint.textContent = "Esc 返回原位";
+			el.append(text, hint);
+			el.classList.add("visible");
+			clearTimeout(state.timer ?? void 0);
+			state.timer = window.setTimeout(hideToast, 5e3);
+		}
+		function hideToast() {
+			if (state.timer !== null) {
+				window.clearTimeout(state.timer);
+				state.timer = null;
+			}
+			state.el?.classList.remove("visible");
+			state.onReturn = null;
+		}
+		function handleKey(event) {
+			if (event.key !== "Escape") return;
+			if (state.el === null || !state.el.classList.contains("visible")) return;
+			if (isEditable(event.target)) return;
+			event.preventDefault();
+			const fn = state.onReturn;
+			hideToast();
+			try {
+				fn?.();
+			} catch {}
+		}
+		function handleClick(event) {
+			if (state.el === null || !state.el.classList.contains("visible")) return;
+			if (state.el !== event.target && !state.el.contains(event.target)) return;
+			const fn = state.onReturn;
+			hideToast();
+			try {
+				fn?.();
+			} catch {}
+		}
+		let wired = false;
+		function ensureListeners() {
+			if (wired) return;
+			wired = true;
+			window.addEventListener("keydown", handleKey, true);
+			window.addEventListener("click", handleClick, true);
+		}
+		function initToast() {
+			ensureListeners();
+		}
+		function disposeToast() {
+			hideToast();
+			state.el?.remove();
+			state.el = null;
+			window.removeEventListener("keydown", handleKey, true);
+			window.removeEventListener("click", handleClick, true);
+			wired = false;
+		}
+		//#endregion
 		//#region src/client/index.ts
 		/**
 		* dsh-turnbar · client half（浏览器端，官方 client 通道）：
-		* 经官方 list 插槽 conversation.composer.dock 注入全景轮次条 + 悬停预览卡 + 拖动 scrub。
+		* 经官方 list 插槽 conversation.composer.dock 注入全景轮次条 + 悬停预览卡 + 拖动 scrub
+		* + playhead 阅读位置指示 + Esc 返回原位 toast。
 		*
 		* 数据：优先 host 半区路由 /plugins/dsh-turnbar/state（live store → sidecar →
 		* 持久化回填，全量轮次图含富元信息），拉不到时退化为客户端 store 推导。
 		* 交互：悬停 120ms 出卡（已可见时切换零延迟）；按住拖动 >4px 进入 scrub，
-		* 卡片实时跟随最近轮次，松手跳转；点击直接跳转（自动 loadOlder → scrollTop → flash）。
-		* 悬停/scrub 状态全部走命令式 DOM（ref + 单例卡片），指针移动零 React 重渲染。
+		* 卡片实时跟随最近轮次，松手跳转；点击直接跳转（自动 loadOlder → scrollTop → flash）；
+		* 滚动时 playhead 跟随视口中央所在轮（rAF 节流）；跳转后 Esc/点击返回原位（5s toast）。
+		* 悬停/scrub/playhead 状态全部走命令式 DOM（ref + 单例），指针/滚动零 React 重渲染。
 		*/
 		const STYLE_ID = "dsh-turnbar-style";
 		const CSS = `
 [data-turnbar] {
+  position: relative;
   display: flex; align-items: center; gap: 2px;
   width: 100%; padding: 3px 8px; box-sizing: border-box;
   user-select: none; -webkit-user-select: none; touch-action: none;
+}
+[data-turnbar-playhead] {
+  position: absolute; top: -3px; bottom: -3px; width: 2px; left: 0;
+  background: var(--dsw-alias-text-accent, #4c9aff);
+  border-radius: 1px; pointer-events: none; opacity: 0;
+  transition: transform .08s linear, opacity .15s ease;
 }
 [data-turnbar-seg] {
   flex: 1 1 0; min-width: 2px; height: 8px; padding: 0; border: none;
@@ -233,6 +343,20 @@ window.__ModuleLoader__.load({
 [data-turnbar-card] .tb-meta {
   color: var(--dsw-alias-label-tertiary, #888); font-size: 11px; margin-top: 6px;
 }
+[data-turnbar-toast] {
+  position: fixed; left: 16px; bottom: 20px; z-index: 920;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; border-radius: 10px;
+  font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.4;
+  color: var(--dsw-alias-text-1, #eee);
+  background: var(--dsw-hovercard-bg, #2C2C2E);
+  box-shadow: var(--dsw-shadow-lv3, 0 8px 24px rgba(0,0,0,.35));
+  cursor: pointer; user-select: none;
+  opacity: 0; transform: translateY(6px); pointer-events: none;
+  transition: opacity .15s ease, transform .15s ease;
+}
+[data-turnbar-toast].visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+[data-turnbar-toast] .tb-toast-return { color: var(--dsw-alias-text-accent, #4c9aff); }
 @media (prefers-reduced-motion: reduce) {
   [data-turnbar-seg], [data-turnbar-card], [data-turnbar-flash] { transition: none; animation: none; }
 }
@@ -371,7 +495,7 @@ window.__ModuleLoader__.load({
 		const HIDE_GRACE_MS = 100;
 		const SCRUB_THRESHOLD_PX = 4;
 		const TurnBar = function TurnBar(props) {
-			const { turns, hasMoreRef, sessionRef } = useTurnbarData(props?.useSession);
+			const { turns, hasMoreRef, sessionRef, sessionId } = useTurnbarData(props?.useSession);
 			if (sessionRef.current == null && props?.session !== void 0) sessionRef.current = props.session;
 			const barRef = react.default.useRef(null);
 			const cardRef = react.default.useRef(null);
@@ -389,6 +513,73 @@ window.__ModuleLoader__.load({
 				if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
 				cardRef.current?.el.remove();
 			}, []);
+			const playheadRef = react.default.useRef(null);
+			const turnsRef = react.default.useRef(turns);
+			turnsRef.current = turns;
+			const computeActiveTurn = () => {
+				const flow = flowEl();
+				const scroller = scrollerOf(flow);
+				if (flow === null || scroller === null) return -1;
+				const scrollerRect = scroller.getBoundingClientRect();
+				if (scrollerRect.height === 0) return -1;
+				const centerY = scrollerRect.top + scrollerRect.height * .5;
+				const tails = [...flow.querySelectorAll("[data-turn-tail]")];
+				let best = -1;
+				let bestDist = Number.POSITIVE_INFINITY;
+				for (const tail of tails) {
+					const turn = Number(tail.getAttribute("data-turn-tail"));
+					if (!Number.isFinite(turn)) continue;
+					const r = tail.getBoundingClientRect();
+					const d = Math.abs(r.top + r.height / 2 - centerY);
+					if (d < bestDist) {
+						bestDist = d;
+						best = turn;
+					}
+				}
+				return best;
+			};
+			const paintPlayhead = () => {
+				const playhead = playheadRef.current;
+				const bar = barRef.current;
+				if (playhead === null || bar === null) return;
+				const activeTurn = computeActiveTurn();
+				if (activeTurn < 0) {
+					playhead.style.opacity = "0";
+					return;
+				}
+				const idx = turnsRef.current.findIndex((t) => t.index === activeTurn);
+				if (idx < 0) {
+					playhead.style.opacity = "0";
+					return;
+				}
+				const pct = segmentCenterPercent(idx, turnsRef.current.length);
+				const usable = bar.offsetWidth - 16;
+				playhead.style.transform = `translateX(${pct / 100 * usable}px)`;
+				playhead.style.opacity = "1";
+			};
+			const scrollRafRef = react.default.useRef(false);
+			const onScrollerScroll = () => {
+				if (scrollRafRef.current) return;
+				scrollRafRef.current = true;
+				window.requestAnimationFrame(() => {
+					scrollRafRef.current = false;
+					paintPlayhead();
+				});
+			};
+			react.default.useEffect(() => {
+				const scroller = scrollerOf(flowEl());
+				if (scroller === null) return;
+				scroller.addEventListener("scroll", onScrollerScroll, { passive: true });
+				window.addEventListener("resize", onScrollerScroll);
+				paintPlayhead();
+				return () => {
+					scroller.removeEventListener("scroll", onScrollerScroll);
+					window.removeEventListener("resize", onScrollerScroll);
+				};
+			}, [sessionId]);
+			react.default.useEffect(() => {
+				paintPlayhead();
+			}, [turns]);
 			if (turns.length < 2) return null;
 			const segments = planSegments(turns);
 			const clearHoverTimer = () => {
@@ -519,6 +710,8 @@ window.__ModuleLoader__.load({
 			const jump = (segment) => {
 				(async () => {
 					const targetTurn = segment.turns[0]?.index ?? 1;
+					const scroller = scrollerOf(flowEl());
+					const prevTop = scroller?.scrollTop ?? 0;
 					let row = userRowOfTurn(targetTurn);
 					for (let i = 0; row === null && hasMoreRef.current && i < 40; i++) {
 						try {
@@ -533,6 +726,11 @@ window.__ModuleLoader__.load({
 					if (row === null) return;
 					jumpToRow(row);
 					flashRow(row);
+					paintPlayhead();
+					if (scroller !== null && Math.abs(scroller.scrollTop - prevTop) > 8) showReturnToast(`#${targetTurn}`, () => {
+						scroller.scrollTop = prevTop;
+						paintPlayhead();
+					});
 				})();
 			};
 			return react.default.createElement("div", {
@@ -547,7 +745,13 @@ window.__ModuleLoader__.load({
 				onPointerDown,
 				onPointerUp,
 				onPointerMoveCapture: onPointerMoveDown
-			}, segments.map((segment) => react.default.createElement("button", {
+			}, [react.default.createElement("div", {
+				key: "playhead",
+				"data-turnbar-playhead": "",
+				ref: (el) => {
+					playheadRef.current = el;
+				}
+			}, null), ...segments.map((segment) => react.default.createElement("button", {
 				key: segment.label,
 				type: "button",
 				"data-turnbar-seg": "",
@@ -557,7 +761,7 @@ window.__ModuleLoader__.load({
 				onClick: () => {
 					if (!suppressClickRef.current) jump(segment);
 				}
-			})));
+			}))]);
 		};
 		//#endregion
 		module.exports = {
@@ -571,6 +775,7 @@ window.__ModuleLoader__.load({
 					style.textContent = CSS;
 					document.head.appendChild(style);
 				}
+				initToast();
 				let dispose;
 				try {
 					dispose = ctx.slots.inject("conversation.composer.dock", () => ctx.slots.register({
@@ -587,6 +792,7 @@ window.__ModuleLoader__.load({
 					} catch {}
 					document.getElementById(STYLE_ID)?.remove();
 					document.getElementById("dsh-turnbar-card")?.remove();
+					disposeToast();
 				};
 			}
 		};

@@ -1,23 +1,33 @@
 /**
  * dsh-turnbar · client half（浏览器端，官方 client 通道）：
- * 经官方 list 插槽 conversation.composer.dock 注入全景轮次条 + 悬停预览卡 + 拖动 scrub。
+ * 经官方 list 插槽 conversation.composer.dock 注入全景轮次条 + 悬停预览卡 + 拖动 scrub
+ * + playhead 阅读位置指示 + Esc 返回原位 toast。
  *
  * 数据：优先 host 半区路由 /plugins/dsh-turnbar/state（live store → sidecar →
  * 持久化回填，全量轮次图含富元信息），拉不到时退化为客户端 store 推导。
  * 交互：悬停 120ms 出卡（已可见时切换零延迟）；按住拖动 >4px 进入 scrub，
- * 卡片实时跟随最近轮次，松手跳转；点击直接跳转（自动 loadOlder → scrollTop → flash）。
- * 悬停/scrub 状态全部走命令式 DOM（ref + 单例卡片），指针移动零 React 重渲染。
+ * 卡片实时跟随最近轮次，松手跳转；点击直接跳转（自动 loadOlder → scrollTop → flash）；
+ * 滚动时 playhead 跟随视口中央所在轮（rAF 节流）；跳转后 Esc/点击返回原位（5s toast）。
+ * 悬停/scrub/playhead 状态全部走命令式 DOM（ref + 单例），指针/滚动零 React 重渲染。
  */
 import React from 'react'
-import { planSegments, type SegmentSpec } from './grouping'
+import { planSegments, segmentCenterPercent, type SegmentSpec } from './grouping'
 import { buildCardModel, buildGroupCardModel, ensureCard, type CardHandle, type CardTurn } from './card'
+import { disposeToast, initToast, showReturnToast } from './toast'
 
 const STYLE_ID = 'dsh-turnbar-style'
 const CSS = `
 [data-turnbar] {
+  position: relative;
   display: flex; align-items: center; gap: 2px;
   width: 100%; padding: 3px 8px; box-sizing: border-box;
   user-select: none; -webkit-user-select: none; touch-action: none;
+}
+[data-turnbar-playhead] {
+  position: absolute; top: -3px; bottom: -3px; width: 2px; left: 0;
+  background: var(--dsw-alias-text-accent, #4c9aff);
+  border-radius: 1px; pointer-events: none; opacity: 0;
+  transition: transform .08s linear, opacity .15s ease;
 }
 [data-turnbar-seg] {
   flex: 1 1 0; min-width: 2px; height: 8px; padding: 0; border: none;
@@ -67,6 +77,20 @@ const CSS = `
 [data-turnbar-card] .tb-meta {
   color: var(--dsw-alias-label-tertiary, #888); font-size: 11px; margin-top: 6px;
 }
+[data-turnbar-toast] {
+  position: fixed; left: 16px; bottom: 20px; z-index: 920;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; border-radius: 10px;
+  font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.4;
+  color: var(--dsw-alias-text-1, #eee);
+  background: var(--dsw-hovercard-bg, #2C2C2E);
+  box-shadow: var(--dsw-shadow-lv3, 0 8px 24px rgba(0,0,0,.35));
+  cursor: pointer; user-select: none;
+  opacity: 0; transform: translateY(6px); pointer-events: none;
+  transition: opacity .15s ease, transform .15s ease;
+}
+[data-turnbar-toast].visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+[data-turnbar-toast] .tb-toast-return { color: var(--dsw-alias-text-accent, #4c9aff); }
 @media (prefers-reduced-motion: reduce) {
   [data-turnbar-seg], [data-turnbar-card], [data-turnbar-flash] { transition: none; animation: none; }
 }
@@ -237,7 +261,7 @@ interface PointerEventLike {
 }
 
 const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
-  const { turns, hasMoreRef, sessionRef } = useTurnbarData(props?.useSession)
+  const { turns, hasMoreRef, sessionRef, sessionId } = useTurnbarData(props?.useSession)
   if (sessionRef.current == null && props?.session !== undefined) sessionRef.current = props.session
 
   const barRef = React.useRef(null as HTMLElement | null)
@@ -258,6 +282,73 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current)
     cardRef.current?.el.remove()
   }, [])
+
+  // ── playhead：视口中央所在轮 → 进度条指示（hooks 必须在条件 return 之前） ──
+  const playheadRef = React.useRef(null as HTMLElement | null)
+  const turnsRef = React.useRef(turns)
+  turnsRef.current = turns
+
+  const computeActiveTurn = (): number => {
+    const flow = flowEl()
+    const scroller = scrollerOf(flow)
+    if (flow === null || scroller === null) return -1
+    const scrollerRect = scroller.getBoundingClientRect()
+    if (scrollerRect.height === 0) return -1
+    const centerY = scrollerRect.top + scrollerRect.height * 0.5
+    const tails = [...flow.querySelectorAll<HTMLElement>('[data-turn-tail]')]
+    let best = -1
+    let bestDist = Number.POSITIVE_INFINITY
+    for (const tail of tails) {
+      const turn = Number(tail.getAttribute('data-turn-tail'))
+      if (!Number.isFinite(turn)) continue
+      const r = tail.getBoundingClientRect()
+      const d = Math.abs(r.top + r.height / 2 - centerY)
+      if (d < bestDist) { bestDist = d; best = turn }
+    }
+    return best
+  }
+
+  const paintPlayhead = (): void => {
+    const playhead = playheadRef.current
+    const bar = barRef.current
+    if (playhead === null || bar === null) return
+    const activeTurn = computeActiveTurn()
+    if (activeTurn < 0) { playhead.style.opacity = '0'; return }
+    const idx = turnsRef.current.findIndex((t: SidecarTurn) => t.index === activeTurn)
+    if (idx < 0) { playhead.style.opacity = '0'; return }
+    const pct = segmentCenterPercent(idx, turnsRef.current.length)
+    // 内容区 = 内宽（左右 8px padding），transform 位移保持 GPU 合成。
+    const usable = bar.offsetWidth - 16
+    playhead.style.transform = `translateX(${(pct / 100) * usable}px)`
+    playhead.style.opacity = '1'
+  }
+
+  const scrollRafRef = React.useRef(false)
+  const onScrollerScroll = (): void => {
+    if (scrollRafRef.current) return
+    scrollRafRef.current = true
+    window.requestAnimationFrame(() => {
+      scrollRafRef.current = false
+      paintPlayhead()
+    })
+  }
+
+  React.useEffect(() => {
+    const flow = flowEl()
+    const scroller = scrollerOf(flow)
+    if (scroller === null) return
+    scroller.addEventListener('scroll', onScrollerScroll, { passive: true })
+    window.addEventListener('resize', onScrollerScroll)
+    paintPlayhead()
+    return () => {
+      scroller.removeEventListener('scroll', onScrollerScroll)
+      window.removeEventListener('resize', onScrollerScroll)
+    }
+  }, [sessionId])
+
+  React.useEffect(() => {
+    paintPlayhead()
+  }, [turns])
 
   if (turns.length < 2) return null
   const segments: SegmentSpec[] = planSegments(turns)
@@ -401,9 +492,12 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     if (segment !== undefined) jump(segment)
   }
 
+  // ── 跳转 ──────────────────────────────────────────────────────────────────
   const jump = (segment: SegmentSpec): void => {
     void (async () => {
       const targetTurn = segment.turns[0]?.index ?? 1
+      const scroller = scrollerOf(flowEl())
+      const prevTop = scroller?.scrollTop ?? 0
       let row = userRowOfTurn(targetTurn)
       // 目标轮不在已加载窗口：拉历史直至行出现（上限 40 页，防呆）。
       for (let i = 0; row === null && hasMoreRef.current && i < 40; i++) {
@@ -415,6 +509,15 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
       if (row === null) return
       jumpToRow(row)
       flashRow(row)
+      paintPlayhead()
+      // 先跳再判定：diff 需在 scrollTop 写入后计算（D5 曾把判定写在跳转前，
+      // 差值恒为 0，toast 永不出现）。
+      if (scroller !== null && Math.abs(scroller.scrollTop - prevTop) > 8) {
+        showReturnToast(`#${targetTurn}`, () => {
+          scroller.scrollTop = prevTop
+          paintPlayhead()
+        })
+      }
     })()
   }
 
@@ -431,20 +534,27 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
       onPointerUp: onPointerUp,
       onPointerMoveCapture: onPointerMoveDown,
     },
-    segments.map(segment =>
-      React.createElement('button', {
-        key: segment.label,
-        type: 'button',
-        'data-turnbar-seg': '',
-        className: [
-          segment.hasUser ? 'has-user' : '',
-          segment.running ? 'running' : '',
-        ].filter(Boolean).join(' ') || undefined,
-        title: segment.label,
-        'aria-label': `jump to turn ${segment.label}`,
-        onClick: () => { if (!suppressClickRef.current) jump(segment) },
-      }),
-    ),
+    [
+      React.createElement('div', {
+        key: 'playhead',
+        'data-turnbar-playhead': '',
+        ref: (el: HTMLElement | null): void => { playheadRef.current = el },
+      }, null),
+      ...segments.map(segment =>
+        React.createElement('button', {
+          key: segment.label,
+          type: 'button',
+          'data-turnbar-seg': '',
+          className: [
+            segment.hasUser ? 'has-user' : '',
+            segment.running ? 'running' : '',
+          ].filter(Boolean).join(' ') || undefined,
+          title: segment.label,
+          'aria-label': `jump to turn ${segment.label}`,
+          onClick: () => { if (!suppressClickRef.current) jump(segment) },
+        }),
+      ),
+    ],
   )
 }
 
@@ -461,6 +571,7 @@ export default {
       style.textContent = CSS
       document.head.appendChild(style)
     }
+    initToast()
     let dispose: (() => void) | undefined
     try {
       dispose = ctx.slots.inject('conversation.composer.dock', () =>
@@ -475,6 +586,7 @@ export default {
       try { dispose?.() } catch { /* 卸载期上下文可能已失效 */ }
       document.getElementById(STYLE_ID)?.remove()
       document.getElementById('dsh-turnbar-card')?.remove()
+      disposeToast()
     }
   },
 }

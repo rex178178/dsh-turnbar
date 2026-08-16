@@ -52,3 +52,10 @@ export function planSegments(
   }
   return segments
 }
+
+/** 第 index 段（0-based）中心的水平百分比位置（0–100），playhead 定位用。 */
+export function segmentCenterPercent(index: number, count: number): number {
+  if (count <= 0) return 0
+  const i = Math.max(0, Math.min(count - 1, index))
+  return ((i + 0.5) / count) * 100
+}

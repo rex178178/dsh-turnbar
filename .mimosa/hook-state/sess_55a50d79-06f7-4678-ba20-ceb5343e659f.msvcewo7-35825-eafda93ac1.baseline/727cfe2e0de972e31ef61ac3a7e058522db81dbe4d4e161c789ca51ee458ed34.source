@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planSegments, type TurnLite } from '../src/client/grouping'
+import { planSegments, segmentCenterPercent, type TurnLite } from '../src/client/grouping'
 
 const mk = (n: number, user = true): TurnLite[] =>
   Array.from({ length: n }, (_, i) => ({ index: i + 1, userFirstLine: user ? `u${i}` : '' }))
@@ -36,5 +36,18 @@ describe('planSegments', () => {
 
   it('handles empty input', () => {
     expect(planSegments([])).toEqual([])
+  })
+})
+
+describe('segmentCenterPercent', () => {
+  it('maps segment index to center percent within [0,100]', () => {
+    expect(segmentCenterPercent(0, 22)).toBeCloseTo(100 / 22 / 2)
+    expect(segmentCenterPercent(21, 22)).toBeCloseTo(100 - 100 / 22 / 2)
+    expect(segmentCenterPercent(11, 22)).toBeCloseTo((11.5 / 22) * 100)
+  })
+  it('clamps out-of-range index and guards empty count', () => {
+    expect(segmentCenterPercent(-3, 10)).toBeCloseTo(5)
+    expect(segmentCenterPercent(99, 10)).toBeCloseTo(95)
+    expect(segmentCenterPercent(0, 0)).toBe(0)
   })
 })

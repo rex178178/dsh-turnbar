@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260816T050612148Z-35555-8bc14ac2100a",
+  "runId": "20260816T050612148Z-35555-8bc14ac2100a",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "098ec44317f928a53894b321d6a3f8941e91facc",
+  "diffHash": "b6bd3d120a22591e40e07b206d6c042f28aa2155a9dba2166a609fefed9a28e4",
+  "rulesVersion": "unavailable",
+  "sessionHash": "5f7911486b8fec1373d5b75e84b65a85e0cf2fc4dc6c6fc42a69b2d7780d6349",
+  "reportRef": ".mimosa/reports/task-review-sess_55a50d79-06f7-4678-ba20-ceb5343e659f-20260816T050612148Z-35555-8bc14ac2100a.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "src/client/toast.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/client/grouping.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/client/index.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "test/grouping.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "test/host-half.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "lib/client.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-08-16T05:06:12.360Z"
+}
