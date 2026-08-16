@@ -163,7 +163,15 @@ export class SessionFold {
         const draft = this.ensure(data.turn, time)
         if (draft === undefined) break
         draft.endedAt = time
-        if (typeof data.reason === 'string') draft.endReason = data.reason
+        // reason 既可能是字符串（旧版/测试），也可能是对象 {kind:'aborted', reason:{kind:'user'}}
+        // （现行 dsh）——对象时取 kind 字段。
+        const reason = data.reason
+        if (typeof reason === 'string' && reason !== '') {
+          draft.endReason = reason
+        } else if (reason !== null && typeof reason === 'object') {
+          const kind = (reason as { kind?: unknown }).kind
+          if (typeof kind === 'string' && kind !== '') draft.endReason = kind
+        }
         break
       }
       case 'goal/change':

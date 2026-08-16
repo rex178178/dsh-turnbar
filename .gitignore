@@ -6,3 +6,6 @@ vendor/
 *.log
 
 .mimosa/
+
+# 探索性截图
+.usertest/*.png

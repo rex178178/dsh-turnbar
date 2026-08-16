@@ -22,11 +22,14 @@ interface SearchState {
   activeIndex: number
   onPick: ((turn: number) => void) | null
   seq: number
+  /** 打开面板前的焦点元素：关闭时归还，否则焦点滞留隐藏输入框会吞掉
+   *  ⌘↑/⌘↓ 与 toast 的 Esc 返回（曾致搜索后键盘导航整体失效）。 */
+  restoreFocus: HTMLElement | null
 }
 
 const state: SearchState = {
   el: null, input: null, list: null, sessionId: '',
-  debounce: null, results: [], activeIndex: 0, onPick: null, seq: 0,
+  debounce: null, results: [], activeIndex: 0, onPick: null, seq: 0, restoreFocus: null,
 }
 
 function ensureEl(): HTMLElement | null {
@@ -89,6 +92,11 @@ function renderResults(matches: SearchMatch[]): void {
     list.appendChild(empty)
     return
   }
+  // 结果计数行（不参与 ↑↓ 选择）
+  const count = document.createElement('div')
+  count.className = 'tb-search-count'
+  count.textContent = `${matches.length} 条结果`
+  list.appendChild(count)
   matches.forEach((m, i) => {
     const row = document.createElement('button')
     row.type = 'button'
@@ -125,6 +133,9 @@ export function toggleSearch(sessionId: string, onPick: (turn: number) => void):
   const el = ensureEl()
   if (el === null) return
   ensureListeners() // 面板内键位（Enter/Esc/↑↓）依赖 window 捕获监听——勿漏挂
+  // 记录当前焦点：关闭时归还（Esc 关闭后焦点归位，勿滞留隐藏输入框）
+  const ae = document.activeElement
+  state.restoreFocus = ae instanceof HTMLElement && ae !== el && ae !== document.body ? ae : null
   state.sessionId = sessionId
   state.onPick = onPick
   state.results = []
@@ -144,6 +155,14 @@ export function closeSearchPanel(): void {
   }
   state.el?.classList.remove('visible')
   state.onPick = null
+  // 焦点归还：避免 ⌘↑/⌘↓ 与 toast Esc 被隐藏输入框的 editable 判定吞掉。
+  const target = state.restoreFocus
+  state.restoreFocus = null
+  if (target !== null) {
+    try { target.focus() } catch { /* 元素可能已卸载 */ }
+  } else {
+    try { (document.activeElement as HTMLElement | null)?.blur?.() } catch { /* 忽略 */ }
+  }
 }
 
 function onInput(): void {
@@ -167,6 +186,8 @@ function onKey(event: KeyboardEvent): void {
     const delta = event.key === 'ArrowDown' ? 1 : -1
     state.activeIndex = (state.activeIndex + delta + rows.length) % rows.length
     rows.forEach((r, i) => r.classList.toggle('active', i === state.activeIndex))
+    // 长结果列表：高亮行滚入视野，避免 ↑↓ 走到屏外看不到选中行
+    rows[state.activeIndex]?.scrollIntoView({ block: 'nearest' })
     return
   }
   if (event.key === 'Enter') {

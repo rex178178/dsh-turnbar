@@ -16,6 +16,8 @@ export interface CardTurn {
   readonly fileChanges?: readonly string[]
   readonly steeringCount?: number
   readonly running?: boolean
+  /** turn/end 的 reason.kind（如 aborted）。 */
+  readonly endReason?: string
 }
 
 export interface CardModel {
@@ -60,6 +62,16 @@ export function buildCardModel(turn: CardTurn, now = Date.now()): CardModel {
   if (turn.running === true) parts.push('运行中')
   const head = parts.join(' · ')
 
+  // 幽灵轮：无任何内容（被终止的系统注入轮）——卡片只做说明，不假装有内容。
+  if ((turn.userFirstLine ?? '') === '' && (turn.assistantFirstLine ?? '') === '' && (turn.toolCallCount ?? 0) <= 0) {
+    return {
+      head,
+      user: '',
+      assistant: '该轮已终止，无对话内容',
+      meta: '',
+    }
+  }
+
   const metaParts: string[] = []
   if (typeof turn.toolCallCount === 'number' && turn.toolCallCount > 0) {
     metaParts.push(`🔧 ${turn.toolCallCount}`)
@@ -71,6 +83,8 @@ export function buildCardModel(turn: CardTurn, now = Date.now()): CardModel {
   if (typeof turn.steeringCount === 'number' && turn.steeringCount > 0) {
     metaParts.push(`+${turn.steeringCount} 补充`)
   }
+  // 真实用户中止轮（有内容但被取消）：标记出来，避免看起来像正常完成的轮。
+  if (turn.endReason === 'aborted') metaParts.push('⏹ 已中止')
   return {
     head,
     user: turn.userFirstLine ?? '',
@@ -86,7 +100,7 @@ export function buildGroupCardModel(turns: readonly CardTurn[]): CardModel {
   return {
     head: `#${first?.index ?? '?'}–#${last?.index ?? '?'} · ${turns.length} 轮`,
     user: users.map((line, i) => `${i + 1}. ${line}`).join('\n'),
-    assistant: '拖动经过或在 ⌘K 中精确搜索（即将上线）',
+    assistant: '拖动经过逐轮预览，或在 ⌘K 中精确搜索',
     meta: '',
   }
 }

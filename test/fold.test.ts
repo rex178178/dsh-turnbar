@@ -137,4 +137,22 @@ describe('SessionFold user-message attribution (synthetic)', () => {
     expect(state.turns[0]?.toolCallCount).toBe(0)
     expect(state.turns[0]?.assistantFirstLine).toBe('')
   })
+
+  it('records end reason from object-form turn/end reason (dsh 现行格式)', () => {
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      ev('user/message', { content: '问题', source: { kind: 'user' } }, 2),
+      ev('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }, 3),
+    ])
+    expect(state.turns[0]?.endReason).toBe('aborted')
+  })
+
+  it('keeps string-form end reason for backward compatibility', () => {
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      ev('user/message', { content: '问题', source: { kind: 'user' } }, 2),
+      ev('turn/end', { turn: 1, reason: 'done' }, 3),
+    ])
+    expect(state.turns[0]?.endReason).toBe('done')
+  })
 })

@@ -38,6 +38,18 @@ function isEditable(target: EventTarget | null): boolean {
   return tag === 'TEXTAREA' || tag === 'INPUT' || (el.isContentEditable === true)
 }
 
+/** 真实输入语境（与 client/index.ts 的 isTypingContext 同规则）：
+ * 空编辑器不算——搜索关闭后焦点回到空 composer 时 Esc 返回仍应可用。 */
+function isTypingContext(target: EventTarget | null): boolean {
+  if (target === null) return false
+  const el = target as HTMLElement
+  if (!isEditable(el)) return false
+  if (el.getAttribute('data-turnbar-search-input') !== null) return true
+  const tag = el.tagName
+  if (tag === 'TEXTAREA' || tag === 'INPUT') return (el as HTMLInputElement).value !== ''
+  return true
+}
+
 export function showReturnToast(label: string, onReturn: () => void): void {
   const el = ensureEl()
   if (el === null) return
@@ -66,7 +78,11 @@ export function hideToast(): void {
 function handleKey(event: KeyboardEvent): void {
   if (event.key !== 'Escape') return
   if (state.el === null || !state.el.classList.contains('visible')) return
-  if (isEditable(event.target)) return
+  if (isTypingContext(event.target)) return
+  // 搜索面板（z-index 930 > toast 920）可见时 Esc 归面板独占——
+  // 否则一次 Esc 会同时关面板并触发返回滚动（双动作 bug）。
+  const panel = document.getElementById('dsh-turnbar-search')
+  if (panel !== null && panel.classList.contains('visible')) return
   event.preventDefault()
   const fn = state.onReturn
   hideToast()

@@ -5,7 +5,17 @@
 export interface TurnLite {
   readonly index: number
   readonly userFirstLine?: string
+  readonly assistantFirstLine?: string
+  readonly toolCallCount?: number
   readonly running?: boolean
+}
+
+/** 幽灵轮：无用户首句、无助手首段、无工具调用的空轮（如被终止的系统注入轮）。
+ * 进度条上置灰、不可点击，hover 提示"已终止"。 */
+export function isEmptyTurn(t: TurnLite): boolean {
+  return (t.userFirstLine ?? '') === ''
+    && (t.assistantFirstLine ?? '') === ''
+    && (t.toolCallCount ?? 0) <= 0
 }
 
 export interface SegmentSpec {
@@ -17,6 +27,8 @@ export interface SegmentSpec {
   readonly hasUser: boolean
   readonly running: boolean
   readonly label: string
+  /** 幽灵轮段（无内容，置灰不可点）。 */
+  readonly ghost: boolean
 }
 
 export function planSegments(
@@ -34,6 +46,7 @@ export function planSegments(
       hasUser: (turn.userFirstLine ?? '') !== '',
       running: turn.running === true,
       label: `#${turn.index}`,
+      ghost: isEmptyTurn(turn),
     }))
   }
   const groupSize = Math.max(2, Math.ceil(turns.length / maxSegments))
@@ -48,6 +61,7 @@ export function planSegments(
       hasUser: chunk.some(turn => (turn.userFirstLine ?? '') !== ''),
       running: chunk.some(turn => turn.running === true),
       label: `#${chunk[0]!.index}–#${chunk[chunk.length - 1]!.index}`,
+      ghost: chunk.every(turn => isEmptyTurn(turn)),
     })
   }
   return segments

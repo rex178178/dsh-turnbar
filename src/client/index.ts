@@ -11,7 +11,7 @@
  * 悬停/scrub/playhead 状态全部走命令式 DOM（ref + 单例），指针/滚动零 React 重渲染。
  */
 import React from 'react'
-import { planSegments, segmentCenterPercent, type SegmentSpec } from './grouping'
+import { isEmptyTurn, planSegments, type SegmentSpec } from './grouping'
 import { buildCardModel, buildGroupCardModel, ensureCard, type CardHandle, type CardTurn } from './card'
 import { disposeToast, initToast, showReturnToast } from './toast'
 import { disposeSearch, toggleSearch } from './search'
@@ -25,10 +25,14 @@ const CSS = `
   user-select: none; -webkit-user-select: none; touch-action: none;
 }
 [data-turnbar-playhead] {
-  position: absolute; top: -3px; bottom: -3px; width: 2px; left: 0;
-  background: var(--dsw-alias-text-accent, #4c9aff);
-  border-radius: 1px; pointer-events: none; opacity: 0;
-  transition: transform .08s linear, opacity .15s ease;
+  position: absolute; top: 3px; bottom: 3px; left: 8px; width: 4px;
+  z-index: 1; pointer-events: none; opacity: 0;
+  border-radius: 3px;
+  /* 阅读位置段高亮：半透明盖 + 底部实色条（视频播放器式当前段指示） */
+  background: rgba(76, 154, 255, .2);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff) 20%, transparent);
+  box-shadow: inset 0 -2px 0 var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
+  transition: transform .08s linear, opacity .15s ease, width .08s linear;
 }
 [data-turnbar-seg] {
   flex: 1 1 0; min-width: 2px; height: 8px; padding: 0; border: none;
@@ -37,16 +41,36 @@ const CSS = `
   transition: transform .12s ease, background .12s ease;
 }
 [data-turnbar-seg].has-user { background: rgba(128, 128, 140, .6); }
+[data-turnbar-seg].ghost {
+  background: rgba(128, 128, 140, .14);
+  cursor: default;
+}
+[data-turnbar-seg].ghost:hover {
+  transform: none;
+  background: rgba(128, 128, 140, .14);
+}
 [data-turnbar-seg]:hover, [data-turnbar-seg].scrub-target {
-  transform: scaleY(1.8); background: var(--dsw-alias-text-accent, #4c9aff);
+  transform: scaleY(1.8); background: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
 }
 [data-turnbar-seg].running {
-  background: var(--dsw-alias-text-accent, #4c9aff);
+  background: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
   animation: turnbar-pulse 1.2s ease-in-out infinite;
 }
 @keyframes turnbar-pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+[data-turnbar-search-btn] {
+  flex: 0 0 auto; width: 24px; height: 14px; padding: 0; border: none;
+  border-radius: 3px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #888);
+  transition: background .12s ease, color .12s ease;
+}
+[data-turnbar-search-btn]:hover {
+  background: rgba(128, 128, 140, .18);
+  color: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
+}
 [data-turnbar-flash] {
-  outline: 2px solid var(--dsw-alias-text-accent, #4c9aff);
+  outline: 2px solid var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
   outline-offset: 2px; border-radius: 6px;
   animation: turnbar-flash 2.5s ease-out forwards;
 }
@@ -55,8 +79,8 @@ const CSS = `
   position: fixed; z-index: 910; width: 320px; max-width: calc(100vw - 16px);
   box-sizing: border-box; padding: 10px 14px; border-radius: 12px;
   font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.55;
-  color: var(--dsw-alias-text-1, #eee);
-  background: var(--dsw-hovercard-bg, #2C2C2E);
+  color: var(--dsw-alias-label-primary, #eee);
+  background: var(--dsw-alias-bg-overlay, #2C2C2E);
   box-shadow: var(--dsw-shadow-lv3, 0 8px 24px rgba(0,0,0,.35));
   pointer-events: none; white-space: pre-wrap; word-break: break-word;
   opacity: 0; transform: translateY(4px);
@@ -83,21 +107,21 @@ const CSS = `
   display: flex; align-items: center; gap: 10px;
   padding: 8px 14px; border-radius: 10px;
   font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.4;
-  color: var(--dsw-alias-text-1, #eee);
-  background: var(--dsw-hovercard-bg, #2C2C2E);
+  color: var(--dsw-alias-label-primary, #eee);
+  background: var(--dsw-alias-bg-overlay, #2C2C2E);
   box-shadow: var(--dsw-shadow-lv3, 0 8px 24px rgba(0,0,0,.35));
   cursor: pointer; user-select: none;
   opacity: 0; transform: translateY(6px); pointer-events: none;
   transition: opacity .15s ease, transform .15s ease;
 }
 [data-turnbar-toast].visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
-[data-turnbar-toast] .tb-toast-return { color: var(--dsw-alias-text-accent, #4c9aff); }
+[data-turnbar-toast] .tb-toast-return { color: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff); }
 [data-turnbar-search] {
   position: fixed; top: 15%; left: 50%; z-index: 930;
   width: 480px; max-width: calc(100vw - 32px); box-sizing: border-box;
   border-radius: 14px; overflow: hidden;
   font-family: system-ui, sans-serif;
-  background: var(--dsw-hovercard-bg, #2C2C2E);
+  background: var(--dsw-alias-bg-overlay, #2C2C2E);
   box-shadow: var(--dsw-shadow-lv3, 0 12px 32px rgba(0,0,0,.45));
   opacity: 0; transform: translate(-50%, -8px); pointer-events: none;
   transition: opacity .15s ease, transform .15s ease;
@@ -106,18 +130,22 @@ const CSS = `
 [data-turnbar-search] .tb-search-box input {
   width: 100%; box-sizing: border-box; padding: 13px 16px;
   background: transparent; border: none; outline: none;
-  color: var(--dsw-alias-text-1, #eee); font-size: 14px; font-family: inherit;
+  color: var(--dsw-alias-label-primary, #eee); font-size: 14px; font-family: inherit;
   border-bottom: 1px solid rgba(128, 128, 140, .25);
 }
 [data-turnbar-search] .tb-search-list { max-height: 320px; overflow-y: auto; padding: 6px; }
+[data-turnbar-search] .tb-search-count {
+  padding: 2px 10px 4px; font-size: 11px;
+  color: var(--dsw-alias-label-tertiary, #888);
+}
 [data-turnbar-search] .tb-search-row {
   display: block; width: 100%; text-align: left;
   background: transparent; border: none; border-radius: 8px; padding: 8px 10px;
-  cursor: pointer; color: var(--dsw-alias-text-1, #eee); font-family: inherit;
+  cursor: pointer; color: var(--dsw-alias-label-primary, #eee); font-family: inherit;
 }
 [data-turnbar-search] .tb-search-row.active { background: rgba(76, 154, 255, .15); }
 [data-turnbar-search] .tb-search-row-head {
-  font-size: 11px; color: var(--dsw-alias-text-accent, #4c9aff); margin-bottom: 2px;
+  font-size: 11px; color: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff); margin-bottom: 2px;
 }
 [data-turnbar-search] .tb-search-row-body {
   font-size: 12px; line-height: 1.5;
@@ -138,6 +166,13 @@ function flowEl(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[data-chat-flow=""]')
 }
 
+/** 进度条段区可用宽度：总宽 - 左右 padding(16) - 搜索按钮宽 - 段/按钮间隙(2)。 */
+function barUsableWidth(bar: HTMLElement): number {
+  const btn = bar.querySelector<HTMLElement>('[data-turnbar-search-btn]')
+  const btnW = btn !== null && btn !== undefined ? btn.offsetWidth : 0
+  return Math.max(1, bar.offsetWidth - 16 - btnW - 2)
+}
+
 function scrollerOf(flow: HTMLElement | null): HTMLElement | null {
   let n: HTMLElement | null = flow
   while (n !== null) {
@@ -155,10 +190,20 @@ function isUserRow(el: Element): el is HTMLElement {
     && el.querySelector('[class*="bubble"]') !== null
 }
 
-/** 流容器顶部是否还有"加载更早"按钮（= 上方仍有未加载历史）。 */
-function loadEarlierVisible(flow: HTMLElement): boolean {
-  const btn = flow.querySelector<HTMLButtonElement>('button')
-  return btn !== null && btn.textContent !== null && /earlier|加载更早|更早/i.test(btn.textContent)
+/** 流顶部是否还有「加载更早/加载中…」按钮（= 上方仍有或正在加载历史）。
+ * 全量扫描 flow 内按钮并匹配任一状态文案——只取第一个按钮 + 单状态正则
+ * 会在「加载中…」或顶部按钮被内容按钮顶替时误判（跨分页跳转竞态根因之一）。 */
+function loadEarlierButton(flow: HTMLElement | null): HTMLButtonElement | null {
+  if (flow === null) return null
+  for (const b of flow.querySelectorAll<HTMLButtonElement>('button')) {
+    const t = b.textContent ?? ''
+    if (/更早|earlier|加载中|loading/i.test(t)) return b
+  }
+  return null
+}
+
+function loadEarlierVisible(flow: HTMLElement | null): boolean {
+  return loadEarlierButton(flow) !== null
 }
 
 /**
@@ -167,6 +212,11 @@ function loadEarlierVisible(flow: HTMLElement): boolean {
  * 即触发消息。区间无下界（目标轮之前的轮未加载）且上方仍有历史时返回 null
  * ——此时"窗口顶部行"不是第一轮，调用方必须继续翻页（v0.2 曾因此把
  * 点击第一段错误落在窗口顶部行上）。
+ *
+ * ⚠️ 兄弟层：dsh 现行 DOM 把每一行包在 flowItem（[data-chat-flow-key]）里，
+ * 轮尾/用户行不是同一父级的兄弟——必须在 flowItem 层走查，再在各自
+ * flowItem 内找用户行（旧版直接 previousElementSibling 会在 slot 内空转，
+ * 曾致跳转永远落回 nthUserRow 兜底）。
  */
 function userRowOfTurn(turn: number): HTMLElement | null {
   const flow = flowEl()
@@ -176,11 +226,23 @@ function userRowOfTurn(turn: number): HTMLElement | null {
   if (next === undefined) return null
   const prev = [...tails].reverse().find(t => Number(t.getAttribute('data-turn-tail')) < turn)
   if (prev === undefined && loadEarlierVisible(flow)) return null
+  // 无下界且顶部无「更早」按钮时，仅当首个轮尾就是第 1 轮才可信（真·已到顶）。
+  // 否则可能是最后一页的局部提交（轮尾尚未渲染完）——此刻走查会溢到流顶
+  // （曾致搜索跳 #3 落在轮 1/轮 5），必须视为未就绪。
+  if (prev === undefined) {
+    const firstTurn = Number(tails[0]?.getAttribute('data-turn-tail'))
+    if (firstTurn !== 1) return null
+  }
+  const nextItem = next.closest<HTMLElement>('[data-chat-flow-key]')
+  const prevItem = prev !== undefined ? prev.closest<HTMLElement>('[data-chat-flow-key]') : null
+  if (nextItem === null) return null
   const found: HTMLElement[] = []
-  let el: Element | null = next
-  while (el !== null && el !== prev) {
-    if (isUserRow(el)) found.push(el as HTMLElement)
-    el = el.previousElementSibling
+  let item: Element | null = nextItem
+  while (item !== null && item !== prevItem) {
+    for (const row of item.querySelectorAll<HTMLElement>('[data-time-hover-root]')) {
+      if (isUserRow(row)) { found.push(row); break }
+    }
+    item = item.previousElementSibling
   }
   // found 按"从后向前"收集；最后一个 = 文档序第一条 = 触发消息。
   return found[found.length - 1] ?? null
@@ -191,6 +253,40 @@ function nthUserRow(n: number): HTMLElement | null {
   if (flow === null) return null
   const rows = [...flow.querySelectorAll<HTMLElement>('[data-time-hover-root]')].filter(isUserRow)
   return rows[Math.max(0, Math.min(rows.length - 1, n))] ?? null
+}
+
+/**
+ * 目标轮没有用户行的锚点（纯工具轮不渲染用户行，userRowOfTurn 恒 null）：
+ * 自身有轮尾 → 锚轮尾行；否则锚前一轮尾所在 flowItem 的下一个 flowItem
+ * （= 目标轮区间第一行）。这样跳 #4（纯工具轮）会落在轮 4 的区间内，
+ * 而不是错误地高亮下一轮的用户行。
+ */
+function turnAnchorRow(turn: number): HTMLElement | null {
+  const flow = flowEl()
+  if (flow === null) return null
+  const tails = [...flow.querySelectorAll<HTMLElement>('[data-turn-tail]')]
+  const own = tails.find(t => Number(t.getAttribute('data-turn-tail')) === turn)
+  if (own !== undefined) return own
+  const prev = [...tails].reverse().find(t => Number(t.getAttribute('data-turn-tail')) < turn)
+  if (prev !== undefined) {
+    // 行在 flowItem 层，prev 轮尾自身的 nextElementSibling 是 slot 内的 null
+    const prevItem = prev.closest<HTMLElement>('[data-chat-flow-key]')
+    const nextItem = prevItem?.nextElementSibling
+    if (nextItem !== null && nextItem !== undefined) return nextItem as HTMLElement
+  }
+  return null
+}
+
+/** 目标轮区间的走查边界是否已齐备（prev/next 轮尾都在）。
+ * 局部提交期间边界缺失：此时接受锚点会落在轮尾上而非用户行（搜索跳 #3
+ * 曾稳定落在 tail-3——视图停在轮尾而不是触发消息）。 */
+function intervalBounded(turn: number): boolean {
+  const flow = flowEl()
+  if (flow === null) return false
+  const tails = [...flow.querySelectorAll<HTMLElement>('[data-turn-tail]')]
+  if (!tails.some(t => Number(t.getAttribute('data-turn-tail')) > turn)) return false
+  if (turn === 1) return true
+  return tails.some(t => Number(t.getAttribute('data-turn-tail')) < turn)
 }
 
 /** navbar 验证过的跳转配方：wheel 事件兜底旧基线 + 一步写入 scrollTop。 */
@@ -208,6 +304,19 @@ function flashRow(row: HTMLElement): void {
 }
 
 // ─── 组件 ────────────────────────────────────────────────────────────────────
+
+/** 是否处于「真实输入语境」：有内容的编辑器或搜索面板输入框。
+ * 空编辑器（如刚关闭搜索后的空 composer）不视为输入语境——否则
+ * ⌘↑/⌘↓ 与 toast 的 Esc 返回会在焦点回到空输入框后全部失效。 */
+function isTypingContext(target: HTMLElement | null): boolean {
+  if (target === null) return false
+  const tag = target.tagName
+  const editable = tag === 'TEXTAREA' || tag === 'INPUT' || target.isContentEditable === true
+  if (!editable) return false
+  if (target.getAttribute('data-turnbar-search-input') !== null) return true
+  if (tag === 'TEXTAREA' || tag === 'INPUT') return ((target as HTMLInputElement).value ?? '') !== ''
+  return true
+}
 
 interface TurnBarProps {
   useSession?: (selector: (s: any) => any) => any
@@ -228,12 +337,11 @@ function loadOnePage(sessionRef: { current: any }): Promise<void> | void {
     try { return service.loadOlder() } catch { /* 落到 DOM 兜底 */ }
   }
   const flow = flowEl()
-  const btn = flow?.querySelector<HTMLButtonElement>('button')
-  const older = btn !== null && btn !== undefined && btn.textContent !== null
-    && /earlier|加载更早|更早/i.test(btn.textContent)
-    ? btn
-    : null
-  older?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  const older = loadEarlierButton(flow)
+  // 只在按钮就绪（非「加载中…」）时点击；加载中由循环节奏自行等待。
+  if (older !== null && /更早|earlier/i.test(older.textContent ?? '')) {
+    older.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  }
 }
 
 function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undefined) {
@@ -253,6 +361,7 @@ function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undef
   sessionRef.current = safeSelect((s: any) => s?.session)
 
   const [metaTurns, setMetaTurns] = React.useState(null as SidecarTurn[] | null)
+  const metaSigRef = React.useRef('')
   React.useEffect(() => {
     if (typeof sessionId !== 'string' || sessionId === '') return
     let alive = true
@@ -261,7 +370,12 @@ function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undef
         const res = await fetch(`/plugins/dsh-turnbar/state?sessionId=${encodeURIComponent(sessionId)}`)
         if (!res.ok) return
         const json = await res.json()
-        if (alive && Array.isArray(json?.state?.turns)) setMetaTurns(json.state.turns)
+        if (!alive || !Array.isArray(json?.state?.turns)) return
+        // 签名不变则不 setState：避免每 5s 轮询无条件换新数组 → 整条重渲染。
+        const sig = JSON.stringify(json.state.turns)
+        if (sig === metaSigRef.current) return
+        metaSigRef.current = sig
+        setMetaTurns(json.state.turns)
       } catch { /* host 半区未激活（如旧版 dsh）→ 走 store 推导 */ }
     }
     void load()
@@ -347,17 +461,21 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     const scrollerRect = scroller.getBoundingClientRect()
     if (scrollerRect.height === 0) return -1
     const centerY = scrollerRect.top + scrollerRect.height * 0.5
+    // 轮尾标记轮末：视口中央所属轮 = 中央下方第一个轮尾的轮号
+    // （中央在轮 N 内容里 ⇔ 中央下方第一个轮尾是 tail-N）。
+    // 旧的「最近轮尾」在轮内容前半段会偏上一轮（⌘↑/⌘↓ 基准曾从 #3 跳到 #1
+    // 而不是 #2）。注：data-chat-flow-key 的前缀不是轮号，不可用。
     const tails = [...flow.querySelectorAll<HTMLElement>('[data-turn-tail]')]
-    let best = -1
-    let bestDist = Number.POSITIVE_INFINITY
     for (const tail of tails) {
-      const turn = Number(tail.getAttribute('data-turn-tail'))
-      if (!Number.isFinite(turn)) continue
       const r = tail.getBoundingClientRect()
-      const d = Math.abs(r.top + r.height / 2 - centerY)
-      if (d < bestDist) { bestDist = d; best = turn }
+      if (r.top + r.height / 2 >= centerY) {
+        const turn = Number(tail.getAttribute('data-turn-tail'))
+        return Number.isFinite(turn) ? turn : -1
+      }
     }
-    return best
+    // 中央在所有轮尾下方（会话末尾）：归最后一轮
+    const last = Number(tails[tails.length - 1]?.getAttribute('data-turn-tail'))
+    return Number.isFinite(last) ? last : -1
   }
 
   const paintPlayhead = (): void => {
@@ -367,12 +485,14 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     const activeTurn = computeActiveTurn()
     if (activeTurn < 0) { playhead.style.opacity = '0'; return }
     lastActiveTurnRef.current = activeTurn
+    const n = turnsRef.current.length
     const idx = turnsRef.current.findIndex((t: SidecarTurn) => t.index === activeTurn)
     if (idx < 0) { playhead.style.opacity = '0'; return }
-    const pct = segmentCenterPercent(idx, turnsRef.current.length)
-    // 内容区 = 内宽（左右 8px padding），transform 位移保持 GPU 合成。
-    const usable = bar.offsetWidth - 16
-    playhead.style.transform = `translateX(${(pct / 100) * usable}px)`
+    // 段高亮盖：宽 = 单段宽（减 1px 缝隙），左边界 = idx 段起点（含搜索按钮宽度补偿）
+    const usable = barUsableWidth(bar)
+    const segW = usable / n
+    playhead.style.width = `${Math.max(2, segW - 1)}px`
+    playhead.style.transform = `translateX(${segW * idx}px)`
     playhead.style.opacity = '1'
   }
 
@@ -416,8 +536,7 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
   React.useEffect(() => {
     const onGlobalKey = (e: KeyboardEvent): void => {
       const target = e.target as HTMLElement | null
-      const editable = target !== null
-        && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable === true)
+      const typing = isTypingContext(target)
       const meta = e.metaKey || e.ctrlKey
       if (meta && e.key.toLowerCase() === 'k') {
         // 搜索面板在输入框聚焦时也允许打开（⌘K 是全局命令，Esc 关闭后焦点归位）。
@@ -426,14 +545,17 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
         return
       }
       if (meta && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-        if (editable) return // 输入框内的上下键是光标移动，不劫持
+        if (typing) return // 真实输入语境（有内容的编辑器/搜索面板）内的上下键不劫持
         e.preventDefault()
         // 以 playhead 最近一次的实际值为基准（WYSIWYG：看到哪就从哪走）。
+        // 导航跳过幽灵轮（无内容、不可跳转的空轮）。
+        const navTurns = turnsRef.current.filter((t: SidecarTurn) => !isEmptyTurn(t))
+        if (navTurns.length === 0) return
         const cur = lastActiveTurnRef.current >= 0 ? lastActiveTurnRef.current : computeActiveTurn()
-        const idx = turnsRef.current.findIndex((t: SidecarTurn) => t.index === cur)
-        const base = idx < 0 ? (e.key === 'ArrowUp' ? turnsRef.current.length : -1) : idx
-        const nextIdx = Math.max(0, Math.min(turnsRef.current.length - 1, e.key === 'ArrowUp' ? base - 1 : base + 1))
-        const next = turnsRef.current[nextIdx]
+        const idx = navTurns.findIndex((t: SidecarTurn) => t.index === cur)
+        const base = idx < 0 ? (e.key === 'ArrowUp' ? navTurns.length : -1) : idx
+        const nextIdx = Math.max(0, Math.min(navTurns.length - 1, e.key === 'ArrowUp' ? base - 1 : base + 1))
+        const next = navTurns[nextIdx]
         if (next !== undefined) jumpRef.current(next.index)
       }
     }
@@ -467,7 +589,12 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
       ? buildCardModel(segment.turns[0] ?? { index: segment.from })
       : buildGroupCardModel(segment.turns)
     card.fill(model)
-    const child = bar.children[segmentIndex] as HTMLElement | undefined
+    // 锚点必须是段按钮自身：bar.children 里第 0 个是 playhead div，
+    // 用 children[segmentIndex] 会整体左移一格、第 1 段直接锚到 playhead
+    // （曾致卡片偏差 +944px，挂在进度条最右侧）。
+    // 注：bar 来自 any 化 ref，不能带泛型调用 querySelectorAll（TS2347）。
+    const segEls = bar.querySelectorAll('[data-turnbar-seg]')
+    const child = segEls[segmentIndex] as HTMLElement | undefined
     if (child !== undefined) card.position(child.getBoundingClientRect())
     card.el.classList.add('visible')
     cardVisibleRef.current = true
@@ -485,7 +612,7 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     const bar = barRef.current
     if (bar === null) return -1
     const rect = bar.getBoundingClientRect()
-    const rel = (x - rect.left - 8) / Math.max(1, rect.width - 16)
+    const rel = (x - rect.left - 8) / barUsableWidth(bar)
     if (rel < 0 || rel > 1) return -1
     return Math.min(segments.length - 1, Math.max(0, Math.floor(rel * segments.length)))
   }
@@ -580,7 +707,7 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     clearScrubHighlight()
     hideCard()
     const segment = segments[idx]
-    if (segment !== undefined) jump(segment)
+    if (segment !== undefined && !segment.ghost) jump(segment)
   }
 
   // ── 跳转 ──────────────────────────────────────────────────────────────────
@@ -592,13 +719,42 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
       // 翻页终止条件 = 目标行真正出现（区间法自带"未加载不可信"判定）；
       // 上限 400 页只是防呆（长会话翻页可能 50+ 页，v0.2 的 40 页上限
       // 会让长会话点第一段落不到第一轮）。
+      // 竞态防护：hasMore 翻 false 不代表渲染完成——「加载中…」按钮还在时
+      // 继续等待；按钮消失后仍可能处于 React 局部提交（轮尾未渲染），
+      // 再等两帧复检，避免把局部提交当最终状态。
       let row = userRowOfTurn(targetTurn)
-      for (let i = 0; row === null && hasMoreRef.current && i < 400; i++) {
+      for (let i = 0; row === null && i < 400; i++) {
+        const flow = flowEl()
+        const pending = flow !== null && (hasMoreRef.current || loadEarlierVisible(flow))
+        if (!pending) {
+          // 最后一页可能仍在 React 局部提交（轮尾分批渲染）：轮询等待
+          // 直到区间判定可信（userRowOfTurn 非 null，或纯工具轮锚点就绪），
+          // 上限 2s。guard（首个轮尾非 1 即视为未就绪）保证等待期不会误取。
+          const t0 = Date.now()
+          while (Date.now() - t0 < 2000) {
+            await new Promise(resolve => window.setTimeout(resolve, 80))
+            await new Promise(resolve => window.requestAnimationFrame(() => resolve(undefined)))
+            row = userRowOfTurn(targetTurn)
+            if (row !== null) break
+            // 锚点只在区间边界齐备时接受：有用户行的轮优先等 userRowOfTurn
+            // 的精确结果，否则会落在轮尾（曾稳定锚 tail-3）。
+            if (intervalBounded(targetTurn)) {
+              const anchor = turnAnchorRow(targetTurn)
+              if (anchor !== null) { row = anchor; break }
+            }
+          }
+          break
+        }
         try { await loadOnePage(sessionRef) } catch { break }
         await new Promise(resolve => window.setTimeout(resolve, 60))
         row = userRowOfTurn(targetTurn)
       }
-      if (row === null) row = nthUserRow(segments.indexOf(segment))
+      // 目标轮无用户行（纯工具轮）：锚到该轮区间内的行（自身轮尾或前一轮尾的下一个 flowItem）。
+      if (row === null) row = turnAnchorRow(targetTurn)
+      // 最后兜底：按轮号取第 N 个用户行（不依赖 segment 对象身份——
+      // 搜索路径的 segment 来自新的 planSegments 调用，indexOf 会得 -1
+      // 而错取第 0 行，曾致搜索跳 #3 落在轮 1）。
+      if (row === null) row = nthUserRow(Math.max(0, targetTurn - 1))
       if (row === null) return
       jumpToRow(row)
       flashRow(row)
@@ -641,12 +797,35 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
           className: [
             segment.hasUser ? 'has-user' : '',
             segment.running ? 'running' : '',
+            segment.ghost ? 'ghost' : '',
           ].filter(Boolean).join(' ') || undefined,
-          title: segment.label,
-          'aria-label': `jump to turn ${segment.label}`,
-          onClick: () => { if (!suppressClickRef.current) jump(segment) },
+          // 不设 title：原生 tooltip（~1s）会与 120ms 自定义悬停卡叠成双提示。
+          'aria-label': segment.ghost
+            ? `turn ${segment.label}（已终止，无内容）`
+            : `jump to turn ${segment.label}`,
+          onClick: () => {
+            if (suppressClickRef.current) return
+            if (segment.ghost) return // 幽灵轮无内容不可跳转
+            jump(segment)
+          },
         }),
       ),
+      // ⌘K 搜索的前端入口：进度条右端放大镜按钮
+      React.createElement('button', {
+        key: 'search-btn',
+        type: 'button',
+        'data-turnbar-search-btn': '',
+        'aria-label': '搜索这个会话（⌘K）',
+        onClick: () => {
+          if (suppressClickRef.current) return
+          toggleSearch(sessionId ?? '', (turn: number) => jumpRef.current(turn))
+        },
+      }, React.createElement('svg', {
+        width: 11, height: 11, viewBox: '0 0 16 16', 'aria-hidden': 'true',
+      },
+      React.createElement('circle', { cx: 7, cy: 7, r: 4.5, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6 }),
+      React.createElement('line', { x1: 10.5, y1: 10.5, x2: 14, y2: 14, stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
+      )),
     ],
   )
 }

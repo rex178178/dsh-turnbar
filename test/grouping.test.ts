@@ -37,6 +37,23 @@ describe('planSegments', () => {
   it('handles empty input', () => {
     expect(planSegments([])).toEqual([])
   })
+
+  it('marks empty turns as ghost segments', () => {
+    const turns: TurnLite[] = [
+      { index: 1, userFirstLine: '正常问题' },
+      { index: 2, userFirstLine: '', assistantFirstLine: '', toolCallCount: 0 },
+      { index: 3, userFirstLine: '还有内容', assistantFirstLine: '回复', toolCallCount: 2 },
+    ]
+    const segs = planSegments(turns)
+    expect(segs[0]?.ghost).toBe(false)
+    expect(segs[1]?.ghost).toBe(true)
+    expect(segs[2]?.ghost).toBe(false)
+  })
+
+  it('isEmptyTurn: tool-only turn is not ghost', () => {
+    const t: TurnLite = { index: 1, userFirstLine: '', assistantFirstLine: '', toolCallCount: 5 }
+    expect(planSegments([t])[0]?.ghost).toBe(false)
+  })
 })
 
 describe('segmentCenterPercent', () => {
