@@ -1,0 +1,193 @@
+/**
+ * ⌘K 会话内搜索面板（v0.2）：纯 DOM 单例（与卡片/toast 同范式）。
+ * 打开后输入即搜（150ms 防抖），结果行显示轮号 + 命中上下文片段；
+ * Enter/点击跳转，↑/↓ 选行，Esc 关闭。搜索端点走 host 半区 /search。
+ */
+
+const PANEL_ID = 'dsh-turnbar-search'
+
+export interface SearchMatch {
+  turn: number
+  userSnippet: string
+  assistantSnippet: string
+}
+
+interface SearchState {
+  el: HTMLElement | null
+  input: HTMLInputElement | null
+  list: HTMLElement | null
+  sessionId: string
+  debounce: number | null
+  results: SearchMatch[]
+  activeIndex: number
+  onPick: ((turn: number) => void) | null
+  seq: number
+}
+
+const state: SearchState = {
+  el: null, input: null, list: null, sessionId: '',
+  debounce: null, results: [], activeIndex: 0, onPick: null, seq: 0,
+}
+
+function ensureEl(): HTMLElement | null {
+  if (state.el !== null && state.el.isConnected) return state.el
+  if (typeof document === 'undefined') return null
+  const existing = document.getElementById(PANEL_ID)
+  if (existing !== null) { state.el = existing as HTMLElement; return state.el }
+  const el = document.createElement('div')
+  el.id = PANEL_ID
+  el.setAttribute('data-turnbar-search', '')
+  const box = document.createElement('div')
+  box.className = 'tb-search-box'
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.placeholder = '搜索这个会话…'
+  input.setAttribute('data-turnbar-search-input', '')
+  input.addEventListener('input', onInput) // 懒创建时绑定一次
+  const list = document.createElement('div')
+  list.className = 'tb-search-list'
+  list.setAttribute('data-turnbar-search-list', '')
+  box.appendChild(input)
+  el.append(box, list)
+  document.body.appendChild(el)
+  state.el = el
+  state.input = input
+  state.list = list
+  return el
+}
+
+async function runSearch(): Promise<void> {
+  const q = state.input?.value.trim() ?? ''
+  const list = state.list
+  if (list === null) return
+  if (q === '' || state.sessionId === '') {
+    renderResults([])
+    return
+  }
+  const seq = ++state.seq
+  try {
+    const res = await fetch(
+      `/plugins/dsh-turnbar/search?sessionId=${encodeURIComponent(state.sessionId)}&q=${encodeURIComponent(q)}`,
+    )
+    if (!res.ok) { renderResults([]); return }
+    const json = await res.json()
+    if (seq !== state.seq) return // 过期响应丢弃
+    renderResults(Array.isArray(json?.matches) ? json.matches as SearchMatch[] : [])
+  } catch { renderResults([]) }
+}
+
+function renderResults(matches: SearchMatch[]): void {
+  const list = state.list
+  if (list === null) return
+  state.results = matches
+  state.activeIndex = 0
+  list.replaceChildren()
+  if (matches.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'tb-search-empty'
+    empty.textContent = '没有匹配的轮次'
+    list.appendChild(empty)
+    return
+  }
+  matches.forEach((m, i) => {
+    const row = document.createElement('button')
+    row.type = 'button'
+    row.className = 'tb-search-row'
+    row.setAttribute('data-turnbar-search-row', '')
+    const head = document.createElement('div')
+    head.className = 'tb-search-row-head'
+    head.textContent = `#${m.turn}`
+    const body = document.createElement('div')
+    body.className = 'tb-search-row-body'
+    const text = m.userSnippet !== '' ? m.userSnippet : m.assistantSnippet
+    body.textContent = text !== '' ? text : '（该轮无文本）'
+    row.append(head, body)
+    if (i === 0) row.classList.add('active')
+    row.addEventListener('click', () => pick(i))
+    list.appendChild(row)
+  })
+}
+
+function pick(index: number): void {
+  const match = state.results[index]
+  if (match === undefined) return
+  const fn = state.onPick // 先取引用：closeSearchPanel 会清空 onPick
+  closeSearchPanel()
+  try { fn?.(match.turn) } catch { /* 跳转失败不致命 */ }
+}
+
+export function toggleSearch(sessionId: string, onPick: (turn: number) => void): void {
+  if (state.el !== null && state.el.classList.contains('visible')) {
+    closeSearchPanel()
+    return
+  }
+  if (sessionId === '') return
+  const el = ensureEl()
+  if (el === null) return
+  ensureListeners() // 面板内键位（Enter/Esc/↑↓）依赖 window 捕获监听——勿漏挂
+  state.sessionId = sessionId
+  state.onPick = onPick
+  state.results = []
+  state.activeIndex = 0
+  state.seq++
+  if (state.input !== null) state.input.value = ''
+  renderResults([])
+  el.classList.add('visible')
+  state.input?.focus()
+}
+
+export function closeSearchPanel(): void {
+  state.seq++
+  if (state.debounce !== null) {
+    window.clearTimeout(state.debounce)
+    state.debounce = null
+  }
+  state.el?.classList.remove('visible')
+  state.onPick = null
+}
+
+function onInput(): void {
+  if (state.debounce !== null) window.clearTimeout(state.debounce)
+  state.debounce = window.setTimeout(() => { state.debounce = null; void runSearch() }, 150)
+}
+
+function onKey(event: KeyboardEvent): void {
+  if (state.el === null || !state.el.classList.contains('visible')) return
+  const list = state.list
+  if (list === null) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeSearchPanel()
+    return
+  }
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    const rows = [...list.querySelectorAll<HTMLElement>('[data-turnbar-search-row]')]
+    if (rows.length === 0) return
+    const delta = event.key === 'ArrowDown' ? 1 : -1
+    state.activeIndex = (state.activeIndex + delta + rows.length) % rows.length
+    rows.forEach((r, i) => r.classList.toggle('active', i === state.activeIndex))
+    return
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    pick(state.activeIndex)
+  }
+}
+
+let wired = false
+function ensureListeners(): void {
+  if (wired) return
+  wired = true
+  window.addEventListener('keydown', onKey, true)
+}
+
+export function disposeSearch(): void {
+  closeSearchPanel()
+  state.el?.remove()
+  state.el = null
+  state.input = null
+  state.list = null
+  window.removeEventListener('keydown', onKey, true)
+  wired = false
+}

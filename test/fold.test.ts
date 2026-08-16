@@ -54,6 +54,21 @@ describe('SessionFold on sanitized real session', () => {
     expect(state.turns.every(turn => turn.fileChanges.every(f => f.startsWith('/synth/')))).toBe(true)
   })
 
+  it('captures full search text (v0.2) beyond the preview first line', () => {
+    const ev = (type: string, data: unknown, seq = 0): SessionEventLike =>
+      ({ type, seq, time: seq * 1000, data })
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      ev('user/message', { content: '第一句。\n第二句是关键的约束条件。' }, 2),
+      ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '回复正文。\n还有更多内容。' }] } }, 3),
+      ev('turn/end', { turn: 1, reason: 'done' }, 4),
+    ])
+    const turn = state.turns[0]
+    expect(turn?.userFirstLine).toBe('第一句。 第二句是关键的约束条件。'.slice(0, 160))
+    expect(turn?.searchUser).toContain('第二句是关键的约束条件')
+    expect(turn?.searchAssistant).toContain('还有更多内容')
+  })
+
   it('records chapter break signals', () => {
     expect(state.chapterBreaks.length).toBe(fixture.stats.goal + fixture.stats.todo)
   })

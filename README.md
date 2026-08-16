@@ -29,9 +29,13 @@ bar always shows the **whole** conversation, not just what's loaded.
 - 🖼 **Hover preview cards** — see *who said what* before you jump: the turn's
   first lines, tool-call count, file edits, token usage, and steering messages.
   Pin-worthy detail, zero clicks.
+- 🔎 **`⌘K` in-conversation search** — search everything the agent said or you
+  said, across the *whole* session (including history beyond what's loaded);
+  pick a result and it lands on the bar.
 - ⤴ **Click / drag to jump** — click a segment to land in ≤300 ms with a
   highlight ring; press and drag to scrub through turns like a video timeline.
   Jumps across unloaded history page it in automatically.
+- ⌨️ **`⌘↑` / `⌘↓`** — hop one turn at a time from where you're reading.
 - ↩ **Esc to return** — after any jump, `Esc` (or the toast) takes you back to
   exactly where you were.
 - 🧩 **Graceful degradation** — if your dsh version changes APIs, dsh-turnbar
@@ -76,9 +80,7 @@ official web UI's `conversation.composer.dock` slot; no patches, no UI hacks.
 
 ## Roadmap
 
-- v0.2: keyboard navigation (`⌘↑`/`⌘↓`), bookmarks
-- v1.0: auto chapters (task boundaries), `⌘K` in-conversation search, token /
-  context-window gauge
+- v1.0: auto chapters (task boundaries), bookmarks, token / context-window gauge
 
 ## Development
 

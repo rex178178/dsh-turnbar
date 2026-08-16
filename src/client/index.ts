@@ -14,6 +14,7 @@ import React from 'react'
 import { planSegments, segmentCenterPercent, type SegmentSpec } from './grouping'
 import { buildCardModel, buildGroupCardModel, ensureCard, type CardHandle, type CardTurn } from './card'
 import { disposeToast, initToast, showReturnToast } from './toast'
+import { disposeSearch, toggleSearch } from './search'
 
 const STYLE_ID = 'dsh-turnbar-style'
 const CSS = `
@@ -91,6 +92,41 @@ const CSS = `
 }
 [data-turnbar-toast].visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
 [data-turnbar-toast] .tb-toast-return { color: var(--dsw-alias-text-accent, #4c9aff); }
+[data-turnbar-search] {
+  position: fixed; top: 15%; left: 50%; z-index: 930;
+  width: 480px; max-width: calc(100vw - 32px); box-sizing: border-box;
+  border-radius: 14px; overflow: hidden;
+  font-family: system-ui, sans-serif;
+  background: var(--dsw-hovercard-bg, #2C2C2E);
+  box-shadow: var(--dsw-shadow-lv3, 0 12px 32px rgba(0,0,0,.45));
+  opacity: 0; transform: translate(-50%, -8px); pointer-events: none;
+  transition: opacity .15s ease, transform .15s ease;
+}
+[data-turnbar-search].visible { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+[data-turnbar-search] .tb-search-box input {
+  width: 100%; box-sizing: border-box; padding: 13px 16px;
+  background: transparent; border: none; outline: none;
+  color: var(--dsw-alias-text-1, #eee); font-size: 14px; font-family: inherit;
+  border-bottom: 1px solid rgba(128, 128, 140, .25);
+}
+[data-turnbar-search] .tb-search-list { max-height: 320px; overflow-y: auto; padding: 6px; }
+[data-turnbar-search] .tb-search-row {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: none; border-radius: 8px; padding: 8px 10px;
+  cursor: pointer; color: var(--dsw-alias-text-1, #eee); font-family: inherit;
+}
+[data-turnbar-search] .tb-search-row.active { background: rgba(76, 154, 255, .15); }
+[data-turnbar-search] .tb-search-row-head {
+  font-size: 11px; color: var(--dsw-alias-text-accent, #4c9aff); margin-bottom: 2px;
+}
+[data-turnbar-search] .tb-search-row-body {
+  font-size: 12px; line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+[data-turnbar-search] .tb-search-empty {
+  padding: 14px; font-size: 12px; text-align: center;
+  color: var(--dsw-alias-label-tertiary, #888);
+}
 @media (prefers-reduced-motion: reduce) {
   [data-turnbar-seg], [data-turnbar-card], [data-turnbar-flash] { transition: none; animation: none; }
 }
@@ -119,19 +155,27 @@ function isUserRow(el: Element): el is HTMLElement {
     && el.querySelector('[class*="bubble"]') !== null
 }
 
-/** 定位 turn N 的触发消息行：从 turn-tail N 向前走到上一轮尾，区间内第一条 user 行。 */
+/**
+ * 定位 turn N 的触发消息行（区间法，鲁棒于"纯工具轮不渲染轮尾"）：
+ * 从下一个存在的轮尾（>N）向前走到上一个轮尾（<N），区间内第一条 user 行
+ * 即触发消息。前提：目标轮必须已加载（否则"下一个轮尾"跨多个未加载轮，
+ * 会误取窗口顶部行）——调用方需先用 store 的已加载轮次集合确认。
+ */
 function userRowOfTurn(turn: number): HTMLElement | null {
   const flow = flowEl()
   if (flow === null) return null
-  const tail = flow.querySelector(`[data-turn-tail="${turn}"]`)
-  if (tail === null) return null
-  let el: Element | null = tail
-  while (el !== null) {
-    if (el !== tail && el.hasAttribute('data-turn-tail')) break
-    if (isUserRow(el)) return el as HTMLElement
+  const tails = [...flow.querySelectorAll<HTMLElement>('[data-turn-tail]')]
+  const next = tails.find(t => Number(t.getAttribute('data-turn-tail')) > turn)
+  if (next === undefined) return null
+  const prev = [...tails].reverse().find(t => Number(t.getAttribute('data-turn-tail')) < turn)
+  const found: HTMLElement[] = []
+  let el: Element | null = next
+  while (el !== null && el !== prev) {
+    if (isUserRow(el)) found.push(el as HTMLElement)
     el = el.previousElementSibling
   }
-  return tail as HTMLElement
+  // found 按"从后向前"收集；最后一个 = 文档序第一条 = 触发消息。
+  return found[found.length - 1] ?? null
 }
 
 function nthUserRow(n: number): HTMLElement | null {
@@ -244,7 +288,7 @@ function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undef
     }))
   }, [metaTurns, nodes, running])
 
-  return { sessionId, turns, hasMoreRef, sessionRef }
+  return { sessionId, turns, nodes, hasMoreRef, sessionRef }
 }
 
 const HOVER_DELAY_MS = 120
@@ -261,7 +305,7 @@ interface PointerEventLike {
 }
 
 const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
-  const { turns, hasMoreRef, sessionRef, sessionId } = useTurnbarData(props?.useSession)
+  const { turns, nodes, hasMoreRef, sessionRef, sessionId } = useTurnbarData(props?.useSession)
   if (sessionRef.current == null && props?.session !== undefined) sessionRef.current = props.session
 
   const barRef = React.useRef(null as HTMLElement | null)
@@ -287,6 +331,8 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
   const playheadRef = React.useRef(null as HTMLElement | null)
   const turnsRef = React.useRef(turns)
   turnsRef.current = turns
+  const nodesRef = React.useRef([] as readonly any[])
+  nodesRef.current = nodes
 
   const computeActiveTurn = (): number => {
     const flow = flowEl()
@@ -314,6 +360,7 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     if (playhead === null || bar === null) return
     const activeTurn = computeActiveTurn()
     if (activeTurn < 0) { playhead.style.opacity = '0'; return }
+    lastActiveTurnRef.current = activeTurn
     const idx = turnsRef.current.findIndex((t: SidecarTurn) => t.index === activeTurn)
     if (idx < 0) { playhead.style.opacity = '0'; return }
     const pct = segmentCenterPercent(idx, turnsRef.current.length)
@@ -349,6 +396,44 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
   React.useEffect(() => {
     paintPlayhead()
   }, [turns])
+
+  // ── ⌘K 搜索 + ⌘↑/⌘↓ 逐轮导航（全局键位，均在 hooks 区） ─────────────────
+  const lastActiveTurnRef = React.useRef(-1)
+  const jumpToTurnNumber = (turnNumber: number): void => {
+    const segs = planSegments(turnsRef.current)
+    const segment = segs.find(s => turnNumber >= s.from && turnNumber <= s.to) ?? segs[0]
+    if (segment !== undefined) jump(segment)
+  }
+  const jumpRef = React.useRef(jumpToTurnNumber)
+  jumpRef.current = jumpToTurnNumber
+
+  React.useEffect(() => {
+    const onGlobalKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null
+      const editable = target !== null
+        && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable === true)
+      const meta = e.metaKey || e.ctrlKey
+      if (meta && e.key.toLowerCase() === 'k') {
+        // 搜索面板在输入框聚焦时也允许打开（⌘K 是全局命令，Esc 关闭后焦点归位）。
+        e.preventDefault()
+        toggleSearch(sessionId ?? '', (turn: number) => jumpRef.current(turn))
+        return
+      }
+      if (meta && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        if (editable) return // 输入框内的上下键是光标移动，不劫持
+        e.preventDefault()
+        // 以 playhead 最近一次的实际值为基准（WYSIWYG：看到哪就从哪走）。
+        const cur = lastActiveTurnRef.current >= 0 ? lastActiveTurnRef.current : computeActiveTurn()
+        const idx = turnsRef.current.findIndex((t: SidecarTurn) => t.index === cur)
+        const base = idx < 0 ? (e.key === 'ArrowUp' ? turnsRef.current.length : -1) : idx
+        const nextIdx = Math.max(0, Math.min(turnsRef.current.length - 1, e.key === 'ArrowUp' ? base - 1 : base + 1))
+        const next = turnsRef.current[nextIdx]
+        if (next !== undefined) jumpRef.current(next.index)
+      }
+    }
+    window.addEventListener('keydown', onGlobalKey, true)
+    return () => window.removeEventListener('keydown', onGlobalKey, true)
+  }, [sessionId])
 
   if (turns.length < 2) return null
   const segments: SegmentSpec[] = planSegments(turns)
@@ -493,18 +578,20 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
   }
 
   // ── 跳转 ──────────────────────────────────────────────────────────────────
+  // 注意：nodesRef 声明在顶部 hooks 区（条件 return 之前）——hook 顺序恒定的硬规则。
   const jump = (segment: SegmentSpec): void => {
     void (async () => {
       const targetTurn = segment.turns[0]?.index ?? 1
       const scroller = scrollerOf(flowEl())
       const prevTop = scroller?.scrollTop ?? 0
-      let row = userRowOfTurn(targetTurn)
-      // 目标轮不在已加载窗口：拉历史直至行出现（上限 40 页，防呆）。
-      for (let i = 0; row === null && hasMoreRef.current && i < 40; i++) {
+      // 分页判定用 store 的已加载轮次集合（nodes 含准确轮号）——DOM 行定位
+      // 只有在目标轮已加载后才可靠（区间法跨未加载轮会误取窗口顶行）。
+      const loaded = (): boolean => nodesRef.current.some((n: any) => n?.turn === targetTurn)
+      for (let i = 0; !loaded() && hasMoreRef.current && i < 40; i++) {
         try { await loadOnePage(sessionRef) } catch { break }
         await new Promise(resolve => window.setTimeout(resolve, 120))
-        row = userRowOfTurn(targetTurn)
       }
+      let row = userRowOfTurn(targetTurn)
       if (row === null) row = nthUserRow(segments.indexOf(segment))
       if (row === null) return
       jumpToRow(row)
@@ -587,6 +674,7 @@ export default {
       document.getElementById(STYLE_ID)?.remove()
       document.getElementById('dsh-turnbar-card')?.remove()
       disposeToast()
+      disposeSearch()
     }
   },
 }

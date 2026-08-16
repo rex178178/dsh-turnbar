@@ -19,6 +19,9 @@ export interface TurnRecord {
   readonly userFirstLine: string
   /** 助手回复首段（仅首个文本块，≤200 字符）。 */
   readonly assistantFirstLine: string
+  /** 搜索用全文（v0.2）：用户输入全文 + 助手首个文本块，去 markdown 语法、截断保护。 */
+  readonly searchUser?: string
+  readonly searchAssistant?: string
   readonly startedAt: number
   readonly endedAt?: number
   readonly tokenIn: number
@@ -29,6 +32,13 @@ export interface TurnRecord {
   /** 轮内追加的 steering 用户消息数（不含触发消息）。 */
   readonly steeringCount: number
   readonly endReason?: string
+}
+
+/** 搜索命中：轮号 + 命中上下文片段（v0.2 ⌘K）。 */
+export interface TurnSearchMatch {
+  readonly turn: number
+  readonly userSnippet: string
+  readonly assistantSnippet: string
 }
 
 /** 章节切分信号（V1 用：任务边界）。先记录，分段规则后续叠加。 */
