@@ -1,0 +1,595 @@
+window.__ModuleLoader__.load({
+	id: "dsh-turnbar",
+	factory: (require) => {
+		var module = { exports: {} };
+		module.exports;
+		//#region \0rolldown/runtime.js
+		var __create = Object.create;
+		var __defProp = Object.defineProperty;
+		var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+		var __getOwnPropNames = Object.getOwnPropertyNames;
+		var __getProtoOf = Object.getPrototypeOf;
+		var __hasOwnProp = Object.prototype.hasOwnProperty;
+		var __copyProps = (to, from, except, desc) => {
+			if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
+				key = keys[i];
+				if (!__hasOwnProp.call(to, key) && key !== except) __defProp(to, key, {
+					get: ((k) => from[k]).bind(null, key),
+					enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+				});
+			}
+			return to;
+		};
+		var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule || !__hasOwnProp.call(mod, "default") ? __defProp(target, "default", {
+			value: mod,
+			enumerable: true
+		}) : target, mod));
+		//#endregion
+		let react = require("react");
+		react = __toESM(react, 1);
+		//#region src/client/grouping.ts
+		function planSegments(turns, maxSegments = 40, groupThreshold = 150) {
+			if (turns.length === 0) return [];
+			if (turns.length <= groupThreshold) return turns.map((turn) => ({
+				kind: "turn",
+				from: turn.index,
+				to: turn.index,
+				turns: [turn],
+				hasUser: (turn.userFirstLine ?? "") !== "",
+				running: turn.running === true,
+				label: `#${turn.index}`
+			}));
+			const groupSize = Math.max(2, Math.ceil(turns.length / maxSegments));
+			const segments = [];
+			for (let start = 0; start < turns.length; start += groupSize) {
+				const chunk = turns.slice(start, start + groupSize);
+				segments.push({
+					kind: "group",
+					from: chunk[0].index,
+					to: chunk[chunk.length - 1].index,
+					turns: chunk,
+					hasUser: chunk.some((turn) => (turn.userFirstLine ?? "") !== ""),
+					running: chunk.some((turn) => turn.running === true),
+					label: `#${chunk[0].index}–#${chunk[chunk.length - 1].index}`
+				});
+			}
+			return segments;
+		}
+		//#endregion
+		//#region src/client/card.ts
+		function formatRelativeTime(at, now = Date.now()) {
+			if (typeof at !== "number" || !Number.isFinite(at) || at <= 0) return "";
+			const diff = Math.max(0, now - at);
+			if (diff < 6e4) return "刚刚";
+			if (diff < 36e5) return `${Math.floor(diff / 6e4)} 分钟前`;
+			if (diff < 864e5) return `${Math.floor(diff / 36e5)} 小时前`;
+			const d = new Date(at);
+			return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+		}
+		function formatTokens(turn) {
+			const total = (typeof turn.tokenIn === "number" ? turn.tokenIn : 0) + (typeof turn.tokenOut === "number" ? turn.tokenOut : 0);
+			if (total <= 0) return "";
+			return `~${compact(total)} tok`;
+		}
+		function compact(n) {
+			if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+			if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+			return String(n);
+		}
+		function buildCardModel(turn, now = Date.now()) {
+			const parts = [`#${turn.index}`];
+			const rel = formatRelativeTime(turn.startedAt, now);
+			if (rel !== "") parts.push(rel);
+			if (turn.running === true) parts.push("运行中");
+			const head = parts.join(" · ");
+			const metaParts = [];
+			if (typeof turn.toolCallCount === "number" && turn.toolCallCount > 0) metaParts.push(`🔧 ${turn.toolCallCount}`);
+			const files = turn.fileChanges?.length ?? 0;
+			if (files > 0) metaParts.push(`📄 ${files}`);
+			const tok = formatTokens(turn);
+			if (tok !== "") metaParts.push(tok);
+			if (typeof turn.steeringCount === "number" && turn.steeringCount > 0) metaParts.push(`+${turn.steeringCount} 补充`);
+			return {
+				head,
+				user: turn.userFirstLine ?? "",
+				assistant: turn.assistantFirstLine ?? "",
+				meta: metaParts.join(" · ")
+			};
+		}
+		function buildGroupCardModel(turns) {
+			const first = turns[0];
+			const last = turns[turns.length - 1];
+			const users = turns.map((t) => t.userFirstLine ?? "").filter((s) => s !== "").slice(0, 3);
+			return {
+				head: `#${first?.index ?? "?"}–#${last?.index ?? "?"} · ${turns.length} 轮`,
+				user: users.map((line, i) => `${i + 1}. ${line}`).join("\n"),
+				assistant: "拖动经过或在 ⌘K 中精确搜索（即将上线）",
+				meta: ""
+			};
+		}
+		const CARD_ID = "dsh-turnbar-card";
+		function ensureCard() {
+			const existing = document.getElementById(CARD_ID);
+			if (existing !== null) return wrap(existing);
+			const el = document.createElement("div");
+			el.id = CARD_ID;
+			el.setAttribute("data-turnbar-card", "");
+			el.setAttribute("role", "tooltip");
+			document.body.appendChild(el);
+			return wrap(el);
+		}
+		function wrap(el) {
+			return {
+				el,
+				show() {
+					el.style.display = "block";
+				},
+				hide() {
+					el.classList.remove("visible");
+				},
+				fill(model) {
+					el.replaceChildren();
+					const head = document.createElement("div");
+					head.className = "tb-head";
+					head.textContent = model.head;
+					el.appendChild(head);
+					if (model.user !== "") {
+						const user = document.createElement("div");
+						user.className = "tb-user";
+						user.textContent = model.user;
+						el.appendChild(user);
+					}
+					if (model.assistant !== "") {
+						const assistant = document.createElement("div");
+						assistant.className = "tb-assistant";
+						assistant.textContent = model.assistant;
+						el.appendChild(assistant);
+					}
+					if (model.meta !== "") {
+						const meta = document.createElement("div");
+						meta.className = "tb-meta";
+						meta.textContent = model.meta;
+						el.appendChild(meta);
+					}
+				},
+				position(anchor) {
+					el.style.left = "0px";
+					el.style.top = "0px";
+					const w = el.offsetWidth;
+					const h = el.offsetHeight;
+					const vw = window.innerWidth;
+					const vh = window.innerHeight;
+					const left = Math.max(8, Math.min(vw - w - 8, anchor.left + anchor.width / 2 - w / 2));
+					const top = anchor.top - h - 8 >= 8 ? anchor.top - h - 8 : anchor.bottom + 8;
+					el.style.left = `${Math.round(left)}px`;
+					el.style.top = `${Math.round(Math.max(8, Math.min(vh - h - 8, top)))}px`;
+				}
+			};
+		}
+		//#endregion
+		//#region src/client/index.ts
+		/**
+		* dsh-turnbar · client half（浏览器端，官方 client 通道）：
+		* 经官方 list 插槽 conversation.composer.dock 注入全景轮次条 + 悬停预览卡 + 拖动 scrub。
+		*
+		* 数据：优先 host 半区路由 /plugins/dsh-turnbar/state（live store → sidecar →
+		* 持久化回填，全量轮次图含富元信息），拉不到时退化为客户端 store 推导。
+		* 交互：悬停 120ms 出卡（已可见时切换零延迟）；按住拖动 >4px 进入 scrub，
+		* 卡片实时跟随最近轮次，松手跳转；点击直接跳转（自动 loadOlder → scrollTop → flash）。
+		* 悬停/scrub 状态全部走命令式 DOM（ref + 单例卡片），指针移动零 React 重渲染。
+		*/
+		const STYLE_ID = "dsh-turnbar-style";
+		const CSS = `
+[data-turnbar] {
+  display: flex; align-items: center; gap: 2px;
+  width: 100%; padding: 3px 8px; box-sizing: border-box;
+  user-select: none; -webkit-user-select: none; touch-action: none;
+}
+[data-turnbar-seg] {
+  flex: 1 1 0; min-width: 2px; height: 8px; padding: 0; border: none;
+  border-radius: 2px; cursor: pointer;
+  background: rgba(128, 128, 140, .35);
+  transition: transform .12s ease, background .12s ease;
+}
+[data-turnbar-seg].has-user { background: rgba(128, 128, 140, .6); }
+[data-turnbar-seg]:hover, [data-turnbar-seg].scrub-target {
+  transform: scaleY(1.8); background: var(--dsw-alias-text-accent, #4c9aff);
+}
+[data-turnbar-seg].running {
+  background: var(--dsw-alias-text-accent, #4c9aff);
+  animation: turnbar-pulse 1.2s ease-in-out infinite;
+}
+@keyframes turnbar-pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+[data-turnbar-flash] {
+  outline: 2px solid var(--dsw-alias-text-accent, #4c9aff);
+  outline-offset: 2px; border-radius: 6px;
+  animation: turnbar-flash 2.5s ease-out forwards;
+}
+@keyframes turnbar-flash { 0% { background-color: rgba(76, 154, 255, .18) } 70% { background-color: rgba(76, 154, 255, .12) } 100% { background-color: transparent } }
+[data-turnbar-card] {
+  position: fixed; z-index: 910; width: 320px; max-width: calc(100vw - 16px);
+  box-sizing: border-box; padding: 10px 14px; border-radius: 12px;
+  font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.55;
+  color: var(--dsw-alias-text-1, #eee);
+  background: var(--dsw-hovercard-bg, #2C2C2E);
+  box-shadow: var(--dsw-shadow-lv3, 0 8px 24px rgba(0,0,0,.35));
+  pointer-events: none; white-space: pre-wrap; word-break: break-word;
+  opacity: 0; transform: translateY(4px);
+  transition: opacity .15s cubic-bezier(.2,0,0,1), transform .15s cubic-bezier(.2,0,0,1);
+}
+[data-turnbar-card].visible { opacity: 1; transform: translateY(0); }
+[data-turnbar-card] .tb-head {
+  display: flex; gap: 8px; align-items: baseline;
+  color: var(--dsw-alias-label-secondary, #aaa); font-size: 11px; margin-bottom: 4px;
+}
+[data-turnbar-card] .tb-user {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  margin-bottom: 4px;
+}
+[data-turnbar-card] .tb-assistant {
+  color: var(--dsw-alias-label-secondary, #bbb); font-size: 11px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+[data-turnbar-card] .tb-meta {
+  color: var(--dsw-alias-label-tertiary, #888); font-size: 11px; margin-top: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-turnbar-seg], [data-turnbar-card], [data-turnbar-flash] { transition: none; animation: none; }
+}
+`;
+		function flowEl() {
+			return document.querySelector("[data-chat-flow=\"\"]");
+		}
+		function scrollerOf(flow) {
+			let n = flow;
+			while (n !== null) {
+				const s = getComputedStyle(n);
+				if (s.overflowY === "auto" || s.overflowY === "scroll") return n;
+				n = n.parentElement;
+			}
+			return null;
+		}
+		/** user 消息行判据（navbar 同款）：有 data-time-hover-root、非 turn-tail、气泡结构。 */
+		function isUserRow(el) {
+			return el.hasAttribute("data-time-hover-root") && !el.hasAttribute("data-turn-tail") && el.querySelector("[class*=\"bubble\"]") !== null;
+		}
+		/** 定位 turn N 的触发消息行：从 turn-tail N 向前走到上一轮尾，区间内第一条 user 行。 */
+		function userRowOfTurn(turn) {
+			const flow = flowEl();
+			if (flow === null) return null;
+			const tail = flow.querySelector(`[data-turn-tail="${turn}"]`);
+			if (tail === null) return null;
+			let el = tail;
+			while (el !== null) {
+				if (el !== tail && el.hasAttribute("data-turn-tail")) break;
+				if (isUserRow(el)) return el;
+				el = el.previousElementSibling;
+			}
+			return tail;
+		}
+		function nthUserRow(n) {
+			const flow = flowEl();
+			if (flow === null) return null;
+			const rows = [...flow.querySelectorAll("[data-time-hover-root]")].filter(isUserRow);
+			return rows[Math.max(0, Math.min(rows.length - 1, n))] ?? null;
+		}
+		/** navbar 验证过的跳转配方：wheel 事件兜底旧基线 + 一步写入 scrollTop。 */
+		function jumpToRow(row) {
+			const scroller = scrollerOf(flowEl());
+			if (scroller === null) return;
+			scroller.dispatchEvent(new WheelEvent("wheel", {
+				deltaY: -1,
+				bubbles: true,
+				cancelable: true
+			}));
+			scroller.scrollTop = scroller.scrollTop + row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+		}
+		function flashRow(row) {
+			row.setAttribute("data-turnbar-flash", "");
+			window.setTimeout(() => row.removeAttribute("data-turnbar-flash"), 2500);
+		}
+		/** 触发一页历史加载：优先 session 契约方法，DOM 的 Load earlier 按钮兜底。 */
+		function loadOnePage(sessionRef) {
+			const service = sessionRef.current;
+			if (typeof service?.loadOlder === "function") try {
+				return service.loadOlder();
+			} catch {}
+			const btn = flowEl()?.querySelector("button");
+			(btn !== null && btn !== void 0 && btn.textContent !== null && /earlier|加载更早|更早/i.test(btn.textContent) ? btn : null)?.dispatchEvent(new MouseEvent("click", {
+				bubbles: true,
+				cancelable: true
+			}));
+		}
+		function useTurnbarData(useSession) {
+			const safeSelect = react.default.useCallback((selector) => {
+				if (typeof useSession !== "function") return void 0;
+				try {
+					return useSession(selector);
+				} catch {
+					return;
+				}
+			}, [useSession]);
+			const sessionId = safeSelect((s) => s?.sessionId);
+			const running = safeSelect((s) => s?.running) === true;
+			const nodes = safeSelect((s) => s?.chat?.legacy?.nodes) ?? [];
+			const hasMore = safeSelect((s) => s?.hasMore) === true;
+			const hasMoreRef = react.default.useRef(false);
+			const sessionRef = react.default.useRef(null);
+			hasMoreRef.current = hasMore;
+			sessionRef.current = safeSelect((s) => s?.session);
+			const [metaTurns, setMetaTurns] = react.default.useState(null);
+			react.default.useEffect(() => {
+				if (typeof sessionId !== "string" || sessionId === "") return;
+				let alive = true;
+				const load = async () => {
+					try {
+						const res = await fetch(`/plugins/dsh-turnbar/state?sessionId=${encodeURIComponent(sessionId)}`);
+						if (!res.ok) return;
+						const json = await res.json();
+						if (alive && Array.isArray(json?.state?.turns)) setMetaTurns(json.state.turns);
+					} catch {}
+				};
+				load();
+				const timer = window.setInterval(load, 5e3);
+				const onVis = () => {
+					if (document.visibilityState === "visible") load();
+				};
+				document.addEventListener("visibilitychange", onVis);
+				return () => {
+					alive = false;
+					window.clearInterval(timer);
+					document.removeEventListener("visibilitychange", onVis);
+				};
+			}, [sessionId]);
+			return {
+				sessionId,
+				turns: react.default.useMemo(() => {
+					if (metaTurns !== null && metaTurns.length > 0) return metaTurns.map((t, i) => ({
+						...t,
+						index: typeof t.index === "number" ? t.index : i + 1,
+						running: running && i === metaTurns.length - 1
+					}));
+					const set = /* @__PURE__ */ new Set();
+					for (const node of nodes) {
+						const turn = node?.turn;
+						if (typeof turn === "number" && Number.isFinite(turn)) set.add(turn);
+					}
+					return [...set].sort((a, b) => a - b).map((index, i, all) => ({
+						index,
+						running: running && i === all.length - 1
+					}));
+				}, [
+					metaTurns,
+					nodes,
+					running
+				]),
+				hasMoreRef,
+				sessionRef
+			};
+		}
+		const HOVER_DELAY_MS = 120;
+		const HIDE_GRACE_MS = 100;
+		const SCRUB_THRESHOLD_PX = 4;
+		const TurnBar = function TurnBar(props) {
+			const { turns, hasMoreRef, sessionRef } = useTurnbarData(props?.useSession);
+			if (sessionRef.current == null && props?.session !== void 0) sessionRef.current = props.session;
+			const barRef = react.default.useRef(null);
+			const cardRef = react.default.useRef(null);
+			const hoverTimerRef = react.default.useRef(null);
+			const hideTimerRef = react.default.useRef(null);
+			const cardVisibleRef = react.default.useRef(false);
+			const scrubbingRef = react.default.useRef(false);
+			const scrubStartXRef = react.default.useRef(0);
+			const scrubSegRef = react.default.useRef(-1);
+			const suppressClickRef = react.default.useRef(false);
+			const lastMoveRef = react.default.useRef(null);
+			const rafPendingRef = react.default.useRef(false);
+			react.default.useEffect(() => () => {
+				if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current);
+				if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
+				cardRef.current?.el.remove();
+			}, []);
+			if (turns.length < 2) return null;
+			const segments = planSegments(turns);
+			const clearHoverTimer = () => {
+				if (hoverTimerRef.current !== null) {
+					window.clearTimeout(hoverTimerRef.current);
+					hoverTimerRef.current = null;
+				}
+			};
+			const clearHideTimer = () => {
+				if (hideTimerRef.current !== null) {
+					window.clearTimeout(hideTimerRef.current);
+					hideTimerRef.current = null;
+				}
+			};
+			const showCardFor = (segmentIndex, immediate) => {
+				const segment = segments[segmentIndex];
+				const bar = barRef.current;
+				if (segment === void 0 || bar === null) return;
+				if (cardRef.current === null) cardRef.current = ensureCard();
+				const card = cardRef.current;
+				const model = segment.kind === "turn" ? buildCardModel(segment.turns[0] ?? { index: segment.from }) : buildGroupCardModel(segment.turns);
+				card.fill(model);
+				const child = bar.children[segmentIndex];
+				if (child !== void 0) card.position(child.getBoundingClientRect());
+				card.el.classList.add("visible");
+				cardVisibleRef.current = true;
+			};
+			const hideCard = () => {
+				clearHoverTimer();
+				clearHideTimer();
+				cardRef.current?.el.classList.remove("visible");
+				cardVisibleRef.current = false;
+			};
+			const segIndexAtX = (x) => {
+				const bar = barRef.current;
+				if (bar === null) return -1;
+				const rect = bar.getBoundingClientRect();
+				const rel = (x - rect.left - 8) / Math.max(1, rect.width - 16);
+				if (rel < 0 || rel > 1) return -1;
+				return Math.min(segments.length - 1, Math.max(0, Math.floor(rel * segments.length)));
+			};
+			const setScrubHighlight = (segmentIndex) => {
+				const bar = barRef.current;
+				if (bar === null) return;
+				if (scrubSegRef.current === segmentIndex) return;
+				bar.children[scrubSegRef.current]?.classList.remove("scrub-target");
+				bar.children[segmentIndex]?.classList.add("scrub-target");
+				scrubSegRef.current = segmentIndex;
+			};
+			const clearScrubHighlight = () => {
+				const bar = barRef.current;
+				if (bar === null) return;
+				bar.children[scrubSegRef.current]?.classList.remove("scrub-target");
+				scrubSegRef.current = -1;
+			};
+			const onPointerMove = (e) => {
+				lastMoveRef.current = {
+					x: e.clientX,
+					y: e.clientY
+				};
+				if (rafPendingRef.current) return;
+				rafPendingRef.current = true;
+				window.requestAnimationFrame(() => {
+					rafPendingRef.current = false;
+					const move = lastMoveRef.current;
+					if (move === null || barRef.current === null) return;
+					const idx = segIndexAtX(move.x);
+					if (idx < 0) {
+						if (!scrubbingRef.current) scheduleHide();
+						return;
+					}
+					clearHideTimer();
+					if (scrubbingRef.current) {
+						setScrubHighlight(idx);
+						showCardFor(idx, true);
+						return;
+					}
+					if (cardVisibleRef.current) {
+						showCardFor(idx, true);
+						return;
+					}
+					clearHoverTimer();
+					hoverTimerRef.current = window.setTimeout(() => {
+						hoverTimerRef.current = null;
+						showCardFor(idx, true);
+					}, HOVER_DELAY_MS);
+				});
+			};
+			const scheduleHide = () => {
+				clearHideTimer();
+				hideTimerRef.current = window.setTimeout(() => {
+					hideTimerRef.current = null;
+					if (!scrubbingRef.current) hideCard();
+				}, HIDE_GRACE_MS);
+			};
+			const onPointerLeave = () => {
+				if (scrubbingRef.current) return;
+				scheduleHide();
+			};
+			const onPointerDown = (e) => {
+				scrubStartXRef.current = e.clientX;
+				scrubbingRef.current = false;
+			};
+			const onPointerMoveDown = (e) => {
+				if ((e.buttons & 1) === 0 && e.pointerType === "mouse") return;
+				if (!scrubbingRef.current && Math.abs(e.clientX - scrubStartXRef.current) > SCRUB_THRESHOLD_PX) {
+					scrubbingRef.current = true;
+					clearHoverTimer();
+					try {
+						barRef.current?.setPointerCapture(e.pointerId);
+					} catch {}
+				}
+				if (scrubbingRef.current) onPointerMove(e);
+			};
+			const onPointerUp = (e) => {
+				if (!scrubbingRef.current) return;
+				scrubbingRef.current = false;
+				suppressClickRef.current = true;
+				window.setTimeout(() => {
+					suppressClickRef.current = false;
+				}, 200);
+				const idx = segIndexAtX(e.clientX);
+				clearScrubHighlight();
+				hideCard();
+				const segment = segments[idx];
+				if (segment !== void 0) jump(segment);
+			};
+			const jump = (segment) => {
+				(async () => {
+					const targetTurn = segment.turns[0]?.index ?? 1;
+					let row = userRowOfTurn(targetTurn);
+					for (let i = 0; row === null && hasMoreRef.current && i < 40; i++) {
+						try {
+							await loadOnePage(sessionRef);
+						} catch {
+							break;
+						}
+						await new Promise((resolve) => window.setTimeout(resolve, 120));
+						row = userRowOfTurn(targetTurn);
+					}
+					if (row === null) row = nthUserRow(segments.indexOf(segment));
+					if (row === null) return;
+					jumpToRow(row);
+					flashRow(row);
+				})();
+			};
+			return react.default.createElement("div", {
+				"data-turnbar": "",
+				ref: (el) => {
+					barRef.current = el;
+				},
+				role: "navigation",
+				"aria-label": "conversation turns",
+				onPointerMove,
+				onPointerLeave,
+				onPointerDown,
+				onPointerUp,
+				onPointerMoveCapture: onPointerMoveDown
+			}, segments.map((segment) => react.default.createElement("button", {
+				key: segment.label,
+				type: "button",
+				"data-turnbar-seg": "",
+				className: [segment.hasUser ? "has-user" : "", segment.running ? "running" : ""].filter(Boolean).join(" ") || void 0,
+				title: segment.label,
+				"aria-label": `jump to turn ${segment.label}`,
+				onClick: () => {
+					if (!suppressClickRef.current) jump(segment);
+				}
+			})));
+		};
+		//#endregion
+		module.exports = {
+			name: "dsh-turnbar-client",
+			inject: ["slots"],
+			apply(ctx) {
+				if (typeof document === "undefined") return () => {};
+				if (document.getElementById(STYLE_ID) === null) {
+					const style = document.createElement("style");
+					style.id = STYLE_ID;
+					style.textContent = CSS;
+					document.head.appendChild(style);
+				}
+				let dispose;
+				try {
+					dispose = ctx.slots.inject("conversation.composer.dock", () => ctx.slots.register({
+						name: "conversation.composer.dock",
+						id: "turnbar",
+						order: 1
+					}, TurnBar));
+				} catch (error) {
+					console.error("[dsh-turnbar] slot registration failed:", error);
+				}
+				return () => {
+					try {
+						dispose?.();
+					} catch {}
+					document.getElementById(STYLE_ID)?.remove();
+					document.getElementById("dsh-turnbar-card")?.remove();
+				};
+			}
+		};
+		return module.exports;
+	}
+});
