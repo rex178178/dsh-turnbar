@@ -2,6 +2,13 @@
   "name": "dsh-turnbar",
   "version": "0.1.0",
   "description": "A progress bar for your agent conversations — in-session turn navigation with hover previews for DeepSeek Harness",
+  "keywords": ["dsh", "deepseek-harness", "plugin", "navigation", "progress-bar", "conversation"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<you>/dsh-turnbar"
+  },
+  "homepage": "https://github.com/<you>/dsh-turnbar",
+  "bugs": "https://github.com/<you>/dsh-turnbar/issues",
   "type": "module",
   "license": "MIT",
   "main": "lib/index.mjs",
