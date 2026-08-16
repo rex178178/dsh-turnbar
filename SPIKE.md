@@ -89,6 +89,20 @@
 3. **UI 框架选型锁定：平台 React**。插槽组件类型 `SlotComponent<P> = (props: P) => ReactNode`（`packages/client/ui-slots/src/index.ts:370`），React 18 由 client runtime 平台冻结表提供，插槽组件天然是 React——不引入 Web Component 桥。
 4. **（新增）文件工具**：dsh 的文件编辑工具为 `str_replace_editor`（参数 `path`，`command: view|create|...`，`view` 只读），已录入 fold 的 FILE_TOOLS 注册表。
 
+## D3 交付快照（2026-08-16，真机 dsh 0.1.0-rc.6 实测通过）
+
+**闭环验证**：隔离测试 profile（`~/.dsh/profiles/turnbar-test`，插件以 link 安装）+ 真实 16 轮历史会话——进度条渲染 16 段全量图；点击第 1 段自动分页加载（turn-tail 5→16）、滚动跳转、2.5s flash 高亮命中早期轮用户行。
+
+**新确立的契约事实（踩坑记录，D4/D5 必读）**：
+1. **composer.dock props 面**：`useSessions, useWorkspaces, useSession, useInput, inputActions, sessionId, useProjection, session, input`（session standard kit 注入；`loadOlder` 在 **`props.session`** 上，不在 `s.views` 上——views 是 conversation 服务，无 loadOlder）。
+2. **legacy 聊天节点形状**：`{kind, seq, messageId, time, turn, step, blocks, usage, timing}`——**轮号是顶层 `node.turn`**，没有 `location`（contract 里的 ConversationLocation 是匹配期形状，视图节点不带）。
+3. **第三方 client 插槽注册范式**：`ctx.slots.inject(name, () => ctx.slots.register({name, id, order}, Component))` 可用；字符串组件、React.createElement 组件均正常渲染（React 平台模块完整，hooks 全有）。若组件渲染抛错会被插槽的 per-entry 边界静默吞掉——**调试用"字符串探针组件"逐层 bisect 最有效**。
+4. **持久化回填**（D5 提前落地）：`ctx.sessionPersistence.inspect(id)` → `{events}` → SessionFold 一次折叠即得全量轮次图（含 usage/contextWindow/title）；**历史会话的进度条数据从此不依赖窗口**。回填用 `ingestQuiet`（不落盘）。
+5. **跳转配方**（navbar 验证过 + 本次复验）：分页循环（`session.loadOlder()` 优先，DOM "Load earlier" 按钮 dispatchEvent click 兜底，每页 120ms 轮询，40 页上限）→ `[data-turn-tail=N]` 向前找区间首条 user 行 → wheel 事件 + scrollTop 一步写入 → `data-turnbar-flash` 2.5s。
+6. 测试环境：`dsh plugin --profile turnbar-test add <dir>`（web 模板只有 base，需手工补 `@deepseek-ai/dsh-web-app` 进 bundles）；启动 `dsh --profile turnbar-test --port 8791`（注意 `web` 子命令拒绝父级 --profile，直接 `--profile X --port Y`）。
+
+**遗留（D4 顺手清）**：useTurnbarData 返回的 viewsRef 已无用可删；探针清理完毕；ESC 返回与 playhead 是 D5。
+
 ## D2 交付快照（2026-08-16，commit c1c5e03）
 
 - 数据层落地：`src/core/fold.ts`（SessionFold 纯函数折叠）+ `src/core/turn-store.ts`（原子 JSONL sidecar，`$DSH_HOME/plugins/dsh-turnbar/sessions/`）+ `src/core/first-line.ts`（markdown 剥离与首句截断）；node half 订阅 `session/event`，全异常吞没。
