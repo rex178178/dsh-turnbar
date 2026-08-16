@@ -155,11 +155,18 @@ function isUserRow(el: Element): el is HTMLElement {
     && el.querySelector('[class*="bubble"]') !== null
 }
 
+/** 流容器顶部是否还有"加载更早"按钮（= 上方仍有未加载历史）。 */
+function loadEarlierVisible(flow: HTMLElement): boolean {
+  const btn = flow.querySelector<HTMLButtonElement>('button')
+  return btn !== null && btn.textContent !== null && /earlier|加载更早|更早/i.test(btn.textContent)
+}
+
 /**
  * 定位 turn N 的触发消息行（区间法，鲁棒于"纯工具轮不渲染轮尾"）：
  * 从下一个存在的轮尾（>N）向前走到上一个轮尾（<N），区间内第一条 user 行
- * 即触发消息。前提：目标轮必须已加载（否则"下一个轮尾"跨多个未加载轮，
- * 会误取窗口顶部行）——调用方需先用 store 的已加载轮次集合确认。
+ * 即触发消息。区间无下界（目标轮之前的轮未加载）且上方仍有历史时返回 null
+ * ——此时"窗口顶部行"不是第一轮，调用方必须继续翻页（v0.2 曾因此把
+ * 点击第一段错误落在窗口顶部行上）。
  */
 function userRowOfTurn(turn: number): HTMLElement | null {
   const flow = flowEl()
@@ -168,6 +175,7 @@ function userRowOfTurn(turn: number): HTMLElement | null {
   const next = tails.find(t => Number(t.getAttribute('data-turn-tail')) > turn)
   if (next === undefined) return null
   const prev = [...tails].reverse().find(t => Number(t.getAttribute('data-turn-tail')) < turn)
+  if (prev === undefined && loadEarlierVisible(flow)) return null
   const found: HTMLElement[] = []
   let el: Element | null = next
   while (el !== null && el !== prev) {
@@ -331,8 +339,6 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
   const playheadRef = React.useRef(null as HTMLElement | null)
   const turnsRef = React.useRef(turns)
   turnsRef.current = turns
-  const nodesRef = React.useRef([] as readonly any[])
-  nodesRef.current = nodes
 
   const computeActiveTurn = (): number => {
     const flow = flowEl()
@@ -578,20 +584,20 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
   }
 
   // ── 跳转 ──────────────────────────────────────────────────────────────────
-  // 注意：nodesRef 声明在顶部 hooks 区（条件 return 之前）——hook 顺序恒定的硬规则。
   const jump = (segment: SegmentSpec): void => {
     void (async () => {
       const targetTurn = segment.turns[0]?.index ?? 1
       const scroller = scrollerOf(flowEl())
       const prevTop = scroller?.scrollTop ?? 0
-      // 分页判定用 store 的已加载轮次集合（nodes 含准确轮号）——DOM 行定位
-      // 只有在目标轮已加载后才可靠（区间法跨未加载轮会误取窗口顶行）。
-      const loaded = (): boolean => nodesRef.current.some((n: any) => n?.turn === targetTurn)
-      for (let i = 0; !loaded() && hasMoreRef.current && i < 40; i++) {
-        try { await loadOnePage(sessionRef) } catch { break }
-        await new Promise(resolve => window.setTimeout(resolve, 120))
-      }
+      // 翻页终止条件 = 目标行真正出现（区间法自带"未加载不可信"判定）；
+      // 上限 400 页只是防呆（长会话翻页可能 50+ 页，v0.2 的 40 页上限
+      // 会让长会话点第一段落不到第一轮）。
       let row = userRowOfTurn(targetTurn)
+      for (let i = 0; row === null && hasMoreRef.current && i < 400; i++) {
+        try { await loadOnePage(sessionRef) } catch { break }
+        await new Promise(resolve => window.setTimeout(resolve, 60))
+        row = userRowOfTurn(targetTurn)
+      }
       if (row === null) row = nthUserRow(segments.indexOf(segment))
       if (row === null) return
       jumpToRow(row)

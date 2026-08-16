@@ -36,12 +36,32 @@ describe('SessionFold on sanitized real session', () => {
     expect(toolTotal).toBe(fixture.stats.toolCalls)
   })
 
-  it('accounts for every user message (trigger + steering + dangling)', () => {
+  it('accounts for every real user message (source.kind=user, trigger + steering + dangling)', () => {
+    // 与 fold 同口径：缺失 source 视为用户消息；plugin/skill-catalog/agent-instructions/goal 均为系统回显。
+    const realUsers = fixture.events.filter(e =>
+      e.type === 'user/message' && ((e.data as any)?.source?.kind ?? 'user') === 'user',
+    ).length
     const attached = state.turns.reduce(
       (n, turn) => n + (turn.userFirstLine !== '' ? 1 : 0) + turn.steeringCount,
       0,
     )
-    expect(attached + state.danglingUserCount).toBe(fixture.stats.userMessages)
+    expect(attached + state.danglingUserCount).toBe(realUsers)
+  })
+
+  it('ignores system-echo user messages (plugin/skill-catalog/agent-instructions)', () => {
+    const ev = (type: string, data: unknown, seq = 0): SessionEventLike =>
+      ({ type, seq, time: seq * 1000, data })
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      ev('user/message', { content: '真实问题', source: { kind: 'user' } }, 2),
+      ev('user/message', { content: 'The approval policy changed', source: { kind: 'plugin' } }, 3),
+      ev('user/message', { content: 'skill 目录注入', source: { kind: 'skill-catalog' } }, 4),
+      ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '回复' }] } }, 5),
+      ev('turn/end', { turn: 1, reason: 'done' }, 6),
+    ])
+    expect(state.turns[0]?.userFirstLine).toBe('真实问题')
+    expect(state.turns[0]?.steeringCount).toBe(0)
+    expect(state.turns[0]?.searchUser).toBe('真实问题')
   })
 
   it('captures token usage and file changes from tool calls', () => {

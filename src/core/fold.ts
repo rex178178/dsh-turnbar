@@ -92,6 +92,12 @@ export class SessionFold {
         break
       }
       case 'user/message': {
+        // 只认真实用户消息（source.kind === 'user'）：plugin/skill-catalog/
+        // agent-instructions 的系统回显（如权限策略变更）不进轮次内容——
+        // 否则卡片首句会显示 "The approval policy changed..." 这类噪声。
+        // 旧版 dsh 无 source 字段时按用户消息处理（向后兼容）。
+        const srcKind = asRecord(data.source)?.kind
+        if (typeof srcKind === 'string' && srcKind !== 'user') break
         const line = userFirstLine(data.content)
         const full = userSearchText(data.content)
         const current = this.lastStarted !== null ? this.drafts.get(this.lastStarted) : undefined
