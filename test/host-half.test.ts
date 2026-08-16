@@ -97,4 +97,28 @@ describe('node half: firehose + state route', () => {
     dispose2?.()
     h.dispose()
   })
+
+  it('L2 degradation: persistence inspect throwing yields 404, not a crash', async () => {
+    const routes = new Map<string, RecordedRoute>()
+    const ctx = {
+      on: (_e: string, h: (s: unknown, e: unknown) => void) => { (ctx as any)._h = h; return h },
+      off: () => {},
+      _h: undefined as ((s: unknown, e: unknown) => void) | undefined,
+      webServer: {
+        register(route: RecordedRoute) {
+          routes.set(route.path, route)
+          return () => routes.delete(route.path)
+        },
+      },
+      sessionPersistence: {
+        inspect: async () => { throw new Error('storage exploded') },
+      },
+    }
+    const dispose = apply(ctx)
+    const res = new MockRes()
+    // 路由内吞掉 inspect 异常 → 按 L2 降级返回 404（无回填，不崩）。
+    await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-boom' }, res as any)
+    expect(res.statusCode).toBe(404)
+    dispose?.()
+  })
 })

@@ -89,12 +89,13 @@
 3. **UI 框架选型锁定：平台 React**。插槽组件类型 `SlotComponent<P> = (props: P) => ReactNode`（`packages/client/ui-slots/src/index.ts:370`），React 18 由 client runtime 平台冻结表提供，插槽组件天然是 React——不引入 Web Component 桥。
 4. **（新增）文件工具**：dsh 的文件编辑工具为 `str_replace_editor`（参数 `path`，`command: view|create|...`，`view` 只读），已录入 fold 的 FILE_TOOLS 注册表。
 
-## D4 交付快照（2026-08-16，commit 见 git log；34/34 单测绿，真机交互验证待用户在浏览器执行）
+## D4 交付快照（2026-08-16，commit c397815 + 修复 e5af383；真机 22 轮会话全项验证通过）
 
 - 悬停预览卡（`src/client/card.ts` 单例 + TurnBar 集成）：120ms 延迟出卡 / 已可见零延迟切换 / 100ms 隐藏宽限 / rAF 节流（指针移动零 React 重渲染）/ textContent 填充 / 视口 clamp + 顶部 <220px 翻转。信息架构与 meta 行（🔧/📄/~tok/+N 补充）按 PLAN §5.1/§5.2 落地；组级卡片（>150 轮）显示区间 + 前 3 条用户句。
-- 拖动 scrub：按住 >4px 进入，卡片实时跟随最近轮次（等宽 flex → 纯算术索引，无逐段 DOM 测量），松手跳转 + 200ms click 抑制。
-- 工程要点：hooks 全部先于条件 return（数据 0→N 到达时 hook 顺序恒定——D3 踩过的静默吞错让这类错误不可见，必须预防）；`React.PointerEvent` 类型在 any-shim 下不可用，用本地 `PointerEventLike`。
-- **真机验证遗留**：IAB webview 宿主当日失联（非插件问题），悬停/scrub 的浏览器内验证由用户在 http://127.0.0.1:8791 刷新后执行（asset-tracker 会话，22 轮）。D5 首件事：重跑此验证 + playhead/Esc 返回。
+- 拖动 scrub：按住 >4px 进入（此时才抓 pointer capture），卡片实时跟随最近轮次（等宽 flex → 纯算术索引），松手跳转 + 200ms click 抑制。工程要点：hooks 全部先于条件 return（hook 顺序恒定）；`React.PointerEvent` 在 any-shim 下不可用，用本地 `PointerEventLike`。
+- **真机验证（22 轮 / 411 步 / 5.9MB 会话，逐项通过）**：22 段渲染；悬停中段卡片 `.visible` 且内容为真实文本（`#12 · 18 小时前` + 用户首句 + 助手首段 + `🔧 20 · ~22.2k tok · +3 补充`）；早期轮（#2）跨分页跳转 flash 命中；scrub 15→8 拖动松手跳转 + 卡片清理。
+- **D4 曾有两个上线 bug（用户实测发现，已修）**：① pointerdown 即抓 capture → click 被重定向、跳转失效（改为超过 4px 才抓）；② 卡片内联 display:none 从未移除 → 永不可见（改为常驻布局 + .visible 管透明度）。**教训：单测覆盖不到 DOM 交互时序，真机验证不可省。**
+- IAB 自动化备忘：webview 失联后新回合可恢复（tabs.list → tabs.get → reload）；大会话打开后主线程忙，前几秒 locator 超时属正常，等 5–10s 再操作；侧栏会话树高频重渲染，角色定位点击常超时——**evaluate 读坐标 + CUA 坐标点击**是最稳路径。
 
 
 
