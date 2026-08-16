@@ -12,24 +12,29 @@ dsh-turnbar 给 DeepSeek Harness 的对话区加了一条视频播放器式的�
 
 ## 安装
 
-最省事的是用 dsh 里的可视化市场 [dshmarket](https://github.com/dsh-market/dsh-market)
-（搜「turnbar」一键安装）。市场收录申请中，收录前用命令行装：
+三条路，任选其一：
+
+**① 插件市场（最省事）**：dsh 里打开 [dshmarket](https://github.com/dsh-market/dsh-market)
+市场，搜「turnbar」一键安装（市场收录申请中，收录前用下面的方式）。
+
+**② 命令行**：打开 Mac 的「终端」App（Terminal.app），粘贴：
 
 ```sh
 dsh plugin --profile web add dsh-turnbar
 ```
 
-⚠️ 两个点先看清楚，能少走弯路：
+注意：这条命令要在**终端 App** 里运行，不是在 dsh 的聊天框里。如果你的终端不认识
+`dsh` 这个命令（输入 `dsh --version` 提示 command not found，说明 dsh 不是全局安装的，
+比如你一直用桌面版或让 AI 帮你启动），先跑：
 
-- 这条命令是在 **macOS 的「终端」App（Terminal.app）** 里运行的，**不是在 dsh 的
-  聊天输入框里**。打开终端先输 `dsh --version` 回车：显示版本号（≥ 0.1.0-rc.5）就没问题；
-  如果提示 command not found，说明 dsh 本体没有装到命令行（比如你是通过别的方式启动 dsh 的），
-  先按官方文档装好 dsh，再执行上面的安装命令。
-- 装完要**重启 web 实例**才生效。给全新 profile 安装时，命令只带基础包、不含 web UI
-  （`@deepseek-ai/dsh-web-app`）——请装进你正在用的 web profile，或装完再补
-  `dsh plugin --profile <名字> add @deepseek-ai/dsh-web-app`。
+```sh
+npm install -g @deepseek-ai/dsh
+```
 
-零配置。历史会话自动回填，进度条永远显示**完整**会话，而不是只显示当前已加载的部分。
+**③ 让 AI 帮你装**：直接对你的 AI 说"帮我装 dsh-turnbar"，它会执行上面的命令——
+和你之前装其他插件的方式一样。
+
+装完**重启 dsh** 生效。零配置，历史会话自动回填，进度条永远显示**完整**会话。
 
 ![跳转高亮](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-jump.png)
 

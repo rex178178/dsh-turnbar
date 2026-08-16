@@ -13,27 +13,30 @@ preview any turn, drag to scrub, click to jump, `Esc` to come back.
 
 ## Install
 
-Easiest is the visual market [dshmarket](https://github.com/dsh-market/dsh-market)
-inside dsh (search "turnbar", one click). While our market listing is pending,
-install from the command line:
+Three ways, pick one:
+
+**① Plugin market (easiest)**: open [dshmarket](https://github.com/dsh-market/dsh-market)
+inside dsh, search "turnbar", one click (listing pending; until it lands, use the options below).
+
+**② Command line**: open your macOS Terminal app and paste:
 
 ```sh
 dsh plugin --profile web add dsh-turnbar
 ```
 
-Two things worth reading before you paste that anywhere:
+This runs in the **Terminal app**, not in the dsh chat box. If your terminal doesn't
+know the `dsh` command (`dsh --version` says command not found — you never installed
+dsh globally, e.g. you use a desktop build or let your AI launch it), install it first:
 
-- It's a command for **your macOS Terminal app (Terminal.app)** — *not* the dsh
-  chat input box. Open Terminal and run `dsh --version`: a version ≥ 0.1.0-rc.5
-  means you're good; `command not found` means dsh itself isn't on your command
-  line (e.g. you launch it another way) — install dsh properly first.
-- **Restart the web app** afterwards for it to take effect. A brand-new profile
-  only gets the base bundle, *not* the web UI (`@deepseek-ai/dsh-web-app`) — install
-  into the profile you already run, or add it afterwards with
-  `dsh plugin --profile <name> add @deepseek-ai/dsh-web-app`.
+```sh
+npm install -g @deepseek-ai/dsh
+```
 
-Zero config. Historical sessions are backfilled automatically, so the bar always
-shows the **whole** conversation, not just what's loaded.
+**③ Ask your AI**: just tell your agent "install dsh-turnbar for me" — it runs the
+same command on your machine, exactly how you've been installing your other plugins.
+
+Restart dsh afterwards. Zero config; historical sessions are backfilled automatically
+and the bar always shows the **whole** conversation.
 
 ![jump with highlight](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-jump.png)
 
