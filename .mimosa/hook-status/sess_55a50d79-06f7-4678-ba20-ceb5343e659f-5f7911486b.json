@@ -1,10 +1,10 @@
 {
   "schemaVersion": "mimosa-hook-status/v1",
-  "recordedAt": "2026-08-16T05:09:40.381Z",
+  "recordedAt": "2026-08-16T05:16:05.557Z",
   "sessionId": "sess_55a50d79-06f7-4678-ba20-ceb5343e659f",
   "event": "PostToolUse",
-  "toolName": "Write",
-  "file": "/Users/rexli/.zcode/cli/memories/projects/dsh-pulgin-0e8d04a2a6219985/memory/dsh-turnbar-plugin-plan.md",
+  "toolName": "Edit",
+  "file": "README.zh-CN.md",
   "outcome": "clear",
   "coverage": "complete",
   "findingCount": 0,

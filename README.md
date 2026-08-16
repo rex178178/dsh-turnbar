@@ -37,20 +37,32 @@ bar always shows the **whole** conversation, not just what's loaded.
 - 🧩 **Graceful degradation** — if your dsh version changes APIs, dsh-turnbar
   hides itself instead of breaking your session.
 
-## Why not just use dsh-navbar?
+## Why yet another navigation plugin?
 
-| | dsh-turnbar | dsh-navbar | dsh-conversation-outline |
-|---|---|---|---|
-| Form | full-map bar, always visible | sliding dot window (>11 nodes) | sidebar outline tab |
-| Data source | session event log (full history) | loaded DOM only | session log (host) |
-| Hover preview with rich meta | ✅ tools/files/tokens | text only | list, no preview cards |
-| Drag scrub | ✅ | ❌ | ❌ |
-| Esc return | ✅ | ❌ | ❌ |
-| Works beyond loaded window | ✅ | ❌ | ❌ |
-| Standalone install | ✅ | ✅ | requires better-sidebar |
+Nine navigation plugins appeared in dsh's first four days — all of them are
+*rails, drawers, or dot chains*: a list of user messages you click through.
+dsh-turnbar is the only one shaped like a **video player**:
 
-All three are MIT and genuinely useful — dsh-turnbar just goes further on the
-*feel*: it's a video player, not a list.
+| | dsh-turnbar | dsh-navbar | dsh-chat-timeline | dsh-message-navigator | dsh-conversation-outline |
+|---|---|---|---|---|---|
+| Form | full-map bar, always visible | sliding dot window | official-rail clone (right rail) | outline drawer | sidebar outline tab |
+| Whole-conversation map (beyond loaded window) | ✅ event log | ❌ | ❌ | ❌ | ❌ |
+| Drag scrub | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Rich hover meta (tools/files/tokens) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `Esc` return | ✅ | ❌ | ❌ | ❌ | ❌ |
+| In-conversation search | roadmap | ❌ | ❌ | outline only | ❌ |
+| Standalone install | ✅ | ✅ | ✅ | ✅ | requires better-sidebar |
+
+All of them are MIT and genuinely useful — dsh-turnbar just goes further on the
+*feel*: it's a video player, not a list. See also
+[Companions](#companions) below.
+
+## Companions
+
+- [dsh-rewind](https://www.npmjs.com/package/dsh-rewind) — roll the conversation
+  back to an earlier turn (jump over, then rewind).
+- [dsh-turn-fold](https://github.com/Winter-And-You-Gone/dsh-turn-fold) — collapse
+  tool-call storms; its per-turn stats pair well with our preview cards.
 
 ## Compatibility
 

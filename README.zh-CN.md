@@ -30,19 +30,28 @@ dsh plugin --profile web add dsh-turnbar
 - ↩ **Esc 返回原位**：跳转后按 `Esc`（或点 toast）精确回到跳转前的位置。
 - 🧩 **优雅降级**：dsh 版本变动导致 API 不兼容时，插件自行隐藏，绝不破坏你的会话。
 
-## 对比
+## 为什么还要再做一个导航插件？
 
-| | dsh-turnbar | dsh-navbar | dsh-conversation-outline |
-|---|---|---|---|
-| 形态 | 常驻全景条 | 滑动窗口点链（>11 节点） | 侧栏大纲 tab |
-| 数据来源 | 会话事件日志（全量历史） | 仅已加载 DOM | 会话日志（host） |
-| 富元信息悬停预览 | ✅ 工具/文件/token | 仅文本 | 列表，无预览卡 |
-| 拖动 scrub | ✅ | ❌ | ❌ |
-| Esc 返回 | ✅ | ❌ | ❌ |
-| 超出已加载窗口可用 | ✅ | ❌ | ❌ |
-| 独立安装 | ✅ | ✅ | 依赖 better-sidebar |
+dsh 发布头四天里涌入了 9 个导航插件——但**全部是"导航轨/抽屉/点链"**：一串用户消息让你点。
+dsh-turnbar 是唯一一个做成**视频播放器**形态的：
 
-三个插件都是 MIT 且各有所长——dsh-turnbar 在"手感"上走得更远：它是播放器，不是列表。
+| | dsh-turnbar | dsh-navbar | dsh-chat-timeline | dsh-message-navigator | dsh-conversation-outline |
+|---|---|---|---|---|---|
+| 形态 | 常驻全景进度条 | 滑动窗口点链 | 官网导航轨复刻（右侧细轨） | 大纲抽屉 | 侧栏大纲 tab |
+| 全会话地图（超出已加载窗口） | ✅ 事件日志 | ❌ | ❌ | ❌ | ❌ |
+| 拖动 scrub | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 富元信息悬停卡（工具/文件/token） | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Esc 返回原位 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 会话内搜索 | roadmap | ❌ | ❌ | 仅大纲内 | ❌ |
+| 独立安装 | ✅ | ✅ | ✅ | ✅ | 依赖 better-sidebar |
+
+它们都是 MIT 且各有所长——dsh-turnbar 只是在"手感"上走得更远：**它是播放器，不是列表。**
+另见下文「互补插件」。
+
+## 互补插件
+
+- [dsh-rewind](https://www.npmjs.com/package/dsh-rewind) —— 把会话回滚到更早的轮次（先跳过去看，再决定回滚）。
+- [dsh-turn-fold](https://github.com/Winter-And-You-Gone/dsh-turn-fold) —— 折叠工具调用风暴；它的轮次统计头和我们的预览卡正好互补。
 
 ## 兼容性
 
