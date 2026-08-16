@@ -99,6 +99,15 @@
 
 
 
+## v0.2 交付快照（2026-08-16，commit 5d98dbc；真机 22 轮会话验证通过）
+
+- ⌘K 会话内搜索：host `/plugins/dsh-turnbar/search`（大小写不敏感子串，覆盖用户全文 + 助手首段，fold 新增 `searchUser`/`searchAssistant` 字段 4000/2000 截断；`snippetAround` 上下文片段；回填结果与 /state 共享缓存）。client 侧 `src/client/search.ts` 纯 DOM 单例面板：150ms 防抖、↑/↓/Enter/Esc、点击跳转。
+- 键盘导航 ⌘↑/⌘↓：以 playhead 最近一次实绘值为基准（WYSIWYG），输入框聚焦时不劫持。
+- **v0.2 三个现场 bug**：① `ensureListeners()` 从未被调用——面板键位全死；② `pick()` 先 closeSearchPanel 清空 onPick 再调用 → 恒空操作（须先取引用）；③ **区间行定位必须等目标轮确认已加载**（store nodes 判定）——否则"下一个存在的轮尾"跨未加载轮，walk-back 误取窗口顶行（scrollTop 归零级事故）。
+- **纯工具轮不渲染 `[data-turn-tail]`**（本会话 turn 4/6 缺失）——行定位改为"下一个/上一个存在轮尾"区间法；playhead 对无轮尾轮取最近轮尾，±1 近似（已文档化，跳转本身精确）。
+- **hooks 顺序规则第三次被打破**（nodesRef 放条件 return 后）——规则已写进文件头注释；此类错误只能靠真机验证兜底。
+- 版本号 0.2.0（首发即此版本）。
+
 ## D5 交付快照（2026-08-16，commit e9f158a；真机 22 轮会话验证通过）
 
 - playhead 阅读位置指示：视口中央最近的 `[data-turn-tail]` → 分段中心百分比 → transform 位移（80ms linear，GPU 合成）；rAF 节流挂 scroller scroll + resize + 数据变化；无已加载轮尾时隐藏。真机：初始在最后一段（97.7%），跳转后重绘到目标轮（第 3 段 → 107px）。
