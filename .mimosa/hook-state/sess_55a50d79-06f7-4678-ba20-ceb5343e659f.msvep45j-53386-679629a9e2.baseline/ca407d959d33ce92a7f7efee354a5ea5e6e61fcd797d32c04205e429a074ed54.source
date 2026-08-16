@@ -179,25 +179,25 @@ window.__ModuleLoader__.load({
 		* 单例 DOM；输入框聚焦时不劫持 Esc。
 		*/
 		const TOAST_ID = "dsh-turnbar-toast";
-		const state = {
+		const state$1 = {
 			el: null,
 			timer: null,
 			onReturn: null
 		};
-		function ensureEl() {
-			if (state.el !== null && state.el.isConnected) return state.el;
+		function ensureEl$1() {
+			if (state$1.el !== null && state$1.el.isConnected) return state$1.el;
 			if (typeof document === "undefined") return null;
 			const existing = document.getElementById(TOAST_ID);
 			if (existing !== null) {
-				state.el = existing;
-				return state.el;
+				state$1.el = existing;
+				return state$1.el;
 			}
 			const el = document.createElement("div");
 			el.id = TOAST_ID;
 			el.setAttribute("data-turnbar-toast", "");
 			el.setAttribute("role", "status");
 			document.body.appendChild(el);
-			state.el = el;
+			state$1.el = el;
 			return el;
 		}
 		function isEditable(target) {
@@ -207,9 +207,9 @@ window.__ModuleLoader__.load({
 			return tag === "TEXTAREA" || tag === "INPUT" || el.isContentEditable === true;
 		}
 		function showReturnToast(label, onReturn) {
-			const el = ensureEl();
+			const el = ensureEl$1();
 			if (el === null) return;
-			state.onReturn = onReturn;
+			state$1.onReturn = onReturn;
 			el.replaceChildren();
 			const text = document.createElement("span");
 			text.textContent = `已定位 ${label}`;
@@ -218,53 +218,235 @@ window.__ModuleLoader__.load({
 			hint.textContent = "Esc 返回原位";
 			el.append(text, hint);
 			el.classList.add("visible");
-			clearTimeout(state.timer ?? void 0);
-			state.timer = window.setTimeout(hideToast, 5e3);
+			clearTimeout(state$1.timer ?? void 0);
+			state$1.timer = window.setTimeout(hideToast, 5e3);
 		}
 		function hideToast() {
-			if (state.timer !== null) {
-				window.clearTimeout(state.timer);
-				state.timer = null;
+			if (state$1.timer !== null) {
+				window.clearTimeout(state$1.timer);
+				state$1.timer = null;
 			}
-			state.el?.classList.remove("visible");
-			state.onReturn = null;
+			state$1.el?.classList.remove("visible");
+			state$1.onReturn = null;
 		}
 		function handleKey(event) {
 			if (event.key !== "Escape") return;
-			if (state.el === null || !state.el.classList.contains("visible")) return;
+			if (state$1.el === null || !state$1.el.classList.contains("visible")) return;
 			if (isEditable(event.target)) return;
 			event.preventDefault();
-			const fn = state.onReturn;
+			const fn = state$1.onReturn;
 			hideToast();
 			try {
 				fn?.();
 			} catch {}
 		}
 		function handleClick(event) {
-			if (state.el === null || !state.el.classList.contains("visible")) return;
-			if (state.el !== event.target && !state.el.contains(event.target)) return;
-			const fn = state.onReturn;
+			if (state$1.el === null || !state$1.el.classList.contains("visible")) return;
+			if (state$1.el !== event.target && !state$1.el.contains(event.target)) return;
+			const fn = state$1.onReturn;
 			hideToast();
 			try {
 				fn?.();
 			} catch {}
 		}
-		let wired = false;
-		function ensureListeners() {
-			if (wired) return;
-			wired = true;
+		let wired$1 = false;
+		function ensureListeners$1() {
+			if (wired$1) return;
+			wired$1 = true;
 			window.addEventListener("keydown", handleKey, true);
 			window.addEventListener("click", handleClick, true);
 		}
 		function initToast() {
-			ensureListeners();
+			ensureListeners$1();
 		}
 		function disposeToast() {
 			hideToast();
-			state.el?.remove();
-			state.el = null;
+			state$1.el?.remove();
+			state$1.el = null;
 			window.removeEventListener("keydown", handleKey, true);
 			window.removeEventListener("click", handleClick, true);
+			wired$1 = false;
+		}
+		//#endregion
+		//#region src/client/search.ts
+		/**
+		* ⌘K 会话内搜索面板（v0.2）：纯 DOM 单例（与卡片/toast 同范式）。
+		* 打开后输入即搜（150ms 防抖），结果行显示轮号 + 命中上下文片段；
+		* Enter/点击跳转，↑/↓ 选行，Esc 关闭。搜索端点走 host 半区 /search。
+		*/
+		const PANEL_ID = "dsh-turnbar-search";
+		const state = {
+			el: null,
+			input: null,
+			list: null,
+			sessionId: "",
+			debounce: null,
+			results: [],
+			activeIndex: 0,
+			onPick: null,
+			seq: 0
+		};
+		function ensureEl() {
+			if (state.el !== null && state.el.isConnected) return state.el;
+			if (typeof document === "undefined") return null;
+			const existing = document.getElementById(PANEL_ID);
+			if (existing !== null) {
+				state.el = existing;
+				return state.el;
+			}
+			const el = document.createElement("div");
+			el.id = PANEL_ID;
+			el.setAttribute("data-turnbar-search", "");
+			const box = document.createElement("div");
+			box.className = "tb-search-box";
+			const input = document.createElement("input");
+			input.type = "text";
+			input.placeholder = "搜索这个会话…";
+			input.setAttribute("data-turnbar-search-input", "");
+			input.addEventListener("input", onInput);
+			const list = document.createElement("div");
+			list.className = "tb-search-list";
+			list.setAttribute("data-turnbar-search-list", "");
+			box.appendChild(input);
+			el.append(box, list);
+			document.body.appendChild(el);
+			state.el = el;
+			state.input = input;
+			state.list = list;
+			return el;
+		}
+		async function runSearch() {
+			const q = state.input?.value.trim() ?? "";
+			if (state.list === null) return;
+			if (q === "" || state.sessionId === "") {
+				renderResults([]);
+				return;
+			}
+			const seq = ++state.seq;
+			try {
+				const res = await fetch(`/plugins/dsh-turnbar/search?sessionId=${encodeURIComponent(state.sessionId)}&q=${encodeURIComponent(q)}`);
+				if (!res.ok) {
+					renderResults([]);
+					return;
+				}
+				const json = await res.json();
+				if (seq !== state.seq) return;
+				renderResults(Array.isArray(json?.matches) ? json.matches : []);
+			} catch {
+				renderResults([]);
+			}
+		}
+		function renderResults(matches) {
+			const list = state.list;
+			if (list === null) return;
+			state.results = matches;
+			state.activeIndex = 0;
+			list.replaceChildren();
+			if (matches.length === 0) {
+				const empty = document.createElement("div");
+				empty.className = "tb-search-empty";
+				empty.textContent = "没有匹配的轮次";
+				list.appendChild(empty);
+				return;
+			}
+			matches.forEach((m, i) => {
+				const row = document.createElement("button");
+				row.type = "button";
+				row.className = "tb-search-row";
+				row.setAttribute("data-turnbar-search-row", "");
+				const head = document.createElement("div");
+				head.className = "tb-search-row-head";
+				head.textContent = `#${m.turn}`;
+				const body = document.createElement("div");
+				body.className = "tb-search-row-body";
+				const text = m.userSnippet !== "" ? m.userSnippet : m.assistantSnippet;
+				body.textContent = text !== "" ? text : "（该轮无文本）";
+				row.append(head, body);
+				if (i === 0) row.classList.add("active");
+				row.addEventListener("click", () => pick(i));
+				list.appendChild(row);
+			});
+		}
+		function pick(index) {
+			const match = state.results[index];
+			if (match === void 0) return;
+			const fn = state.onPick;
+			closeSearchPanel();
+			try {
+				fn?.(match.turn);
+			} catch {}
+		}
+		function toggleSearch(sessionId, onPick) {
+			if (state.el !== null && state.el.classList.contains("visible")) {
+				closeSearchPanel();
+				return;
+			}
+			if (sessionId === "") return;
+			const el = ensureEl();
+			if (el === null) return;
+			ensureListeners();
+			state.sessionId = sessionId;
+			state.onPick = onPick;
+			state.results = [];
+			state.activeIndex = 0;
+			state.seq++;
+			if (state.input !== null) state.input.value = "";
+			renderResults([]);
+			el.classList.add("visible");
+			state.input?.focus();
+		}
+		function closeSearchPanel() {
+			state.seq++;
+			if (state.debounce !== null) {
+				window.clearTimeout(state.debounce);
+				state.debounce = null;
+			}
+			state.el?.classList.remove("visible");
+			state.onPick = null;
+		}
+		function onInput() {
+			if (state.debounce !== null) window.clearTimeout(state.debounce);
+			state.debounce = window.setTimeout(() => {
+				state.debounce = null;
+				runSearch();
+			}, 150);
+		}
+		function onKey(event) {
+			if (state.el === null || !state.el.classList.contains("visible")) return;
+			const list = state.list;
+			if (list === null) return;
+			if (event.key === "Escape") {
+				event.preventDefault();
+				closeSearchPanel();
+				return;
+			}
+			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+				event.preventDefault();
+				const rows = [...list.querySelectorAll("[data-turnbar-search-row]")];
+				if (rows.length === 0) return;
+				const delta = event.key === "ArrowDown" ? 1 : -1;
+				state.activeIndex = (state.activeIndex + delta + rows.length) % rows.length;
+				rows.forEach((r, i) => r.classList.toggle("active", i === state.activeIndex));
+				return;
+			}
+			if (event.key === "Enter") {
+				event.preventDefault();
+				pick(state.activeIndex);
+			}
+		}
+		let wired = false;
+		function ensureListeners() {
+			if (wired) return;
+			wired = true;
+			window.addEventListener("keydown", onKey, true);
+		}
+		function disposeSearch() {
+			closeSearchPanel();
+			state.el?.remove();
+			state.el = null;
+			state.input = null;
+			state.list = null;
+			window.removeEventListener("keydown", onKey, true);
 			wired = false;
 		}
 		//#endregion
@@ -357,6 +539,41 @@ window.__ModuleLoader__.load({
 }
 [data-turnbar-toast].visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
 [data-turnbar-toast] .tb-toast-return { color: var(--dsw-alias-text-accent, #4c9aff); }
+[data-turnbar-search] {
+  position: fixed; top: 15%; left: 50%; z-index: 930;
+  width: 480px; max-width: calc(100vw - 32px); box-sizing: border-box;
+  border-radius: 14px; overflow: hidden;
+  font-family: system-ui, sans-serif;
+  background: var(--dsw-hovercard-bg, #2C2C2E);
+  box-shadow: var(--dsw-shadow-lv3, 0 12px 32px rgba(0,0,0,.45));
+  opacity: 0; transform: translate(-50%, -8px); pointer-events: none;
+  transition: opacity .15s ease, transform .15s ease;
+}
+[data-turnbar-search].visible { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+[data-turnbar-search] .tb-search-box input {
+  width: 100%; box-sizing: border-box; padding: 13px 16px;
+  background: transparent; border: none; outline: none;
+  color: var(--dsw-alias-text-1, #eee); font-size: 14px; font-family: inherit;
+  border-bottom: 1px solid rgba(128, 128, 140, .25);
+}
+[data-turnbar-search] .tb-search-list { max-height: 320px; overflow-y: auto; padding: 6px; }
+[data-turnbar-search] .tb-search-row {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: none; border-radius: 8px; padding: 8px 10px;
+  cursor: pointer; color: var(--dsw-alias-text-1, #eee); font-family: inherit;
+}
+[data-turnbar-search] .tb-search-row.active { background: rgba(76, 154, 255, .15); }
+[data-turnbar-search] .tb-search-row-head {
+  font-size: 11px; color: var(--dsw-alias-text-accent, #4c9aff); margin-bottom: 2px;
+}
+[data-turnbar-search] .tb-search-row-body {
+  font-size: 12px; line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+[data-turnbar-search] .tb-search-empty {
+  padding: 14px; font-size: 12px; text-align: center;
+  color: var(--dsw-alias-label-tertiary, #888);
+}
 @media (prefers-reduced-motion: reduce) {
   [data-turnbar-seg], [data-turnbar-card], [data-turnbar-flash] { transition: none; animation: none; }
 }
@@ -377,19 +594,26 @@ window.__ModuleLoader__.load({
 		function isUserRow(el) {
 			return el.hasAttribute("data-time-hover-root") && !el.hasAttribute("data-turn-tail") && el.querySelector("[class*=\"bubble\"]") !== null;
 		}
-		/** 定位 turn N 的触发消息行：从 turn-tail N 向前走到上一轮尾，区间内第一条 user 行。 */
+		/**
+		* 定位 turn N 的触发消息行（区间法，鲁棒于"纯工具轮不渲染轮尾"）：
+		* 从下一个存在的轮尾（>N）向前走到上一个轮尾（<N），区间内第一条 user 行
+		* 即触发消息。前提：目标轮必须已加载（否则"下一个轮尾"跨多个未加载轮，
+		* 会误取窗口顶部行）——调用方需先用 store 的已加载轮次集合确认。
+		*/
 		function userRowOfTurn(turn) {
 			const flow = flowEl();
 			if (flow === null) return null;
-			const tail = flow.querySelector(`[data-turn-tail="${turn}"]`);
-			if (tail === null) return null;
-			let el = tail;
-			while (el !== null) {
-				if (el !== tail && el.hasAttribute("data-turn-tail")) break;
-				if (isUserRow(el)) return el;
+			const tails = [...flow.querySelectorAll("[data-turn-tail]")];
+			const next = tails.find((t) => Number(t.getAttribute("data-turn-tail")) > turn);
+			if (next === void 0) return null;
+			const prev = [...tails].reverse().find((t) => Number(t.getAttribute("data-turn-tail")) < turn);
+			const found = [];
+			let el = next;
+			while (el !== null && el !== prev) {
+				if (isUserRow(el)) found.push(el);
 				el = el.previousElementSibling;
 			}
-			return tail;
+			return found[found.length - 1] ?? null;
 		}
 		function nthUserRow(n) {
 			const flow = flowEl();
@@ -487,6 +711,7 @@ window.__ModuleLoader__.load({
 					nodes,
 					running
 				]),
+				nodes,
 				hasMoreRef,
 				sessionRef
 			};
@@ -495,7 +720,7 @@ window.__ModuleLoader__.load({
 		const HIDE_GRACE_MS = 100;
 		const SCRUB_THRESHOLD_PX = 4;
 		const TurnBar = function TurnBar(props) {
-			const { turns, hasMoreRef, sessionRef, sessionId } = useTurnbarData(props?.useSession);
+			const { turns, nodes, hasMoreRef, sessionRef, sessionId } = useTurnbarData(props?.useSession);
 			if (sessionRef.current == null && props?.session !== void 0) sessionRef.current = props.session;
 			const barRef = react.default.useRef(null);
 			const cardRef = react.default.useRef(null);
@@ -516,6 +741,8 @@ window.__ModuleLoader__.load({
 			const playheadRef = react.default.useRef(null);
 			const turnsRef = react.default.useRef(turns);
 			turnsRef.current = turns;
+			const nodesRef = react.default.useRef([]);
+			nodesRef.current = nodes;
 			const computeActiveTurn = () => {
 				const flow = flowEl();
 				const scroller = scrollerOf(flow);
@@ -547,6 +774,7 @@ window.__ModuleLoader__.load({
 					playhead.style.opacity = "0";
 					return;
 				}
+				lastActiveTurnRef.current = activeTurn;
 				const idx = turnsRef.current.findIndex((t) => t.index === activeTurn);
 				if (idx < 0) {
 					playhead.style.opacity = "0";
@@ -580,6 +808,38 @@ window.__ModuleLoader__.load({
 			react.default.useEffect(() => {
 				paintPlayhead();
 			}, [turns]);
+			const lastActiveTurnRef = react.default.useRef(-1);
+			const jumpToTurnNumber = (turnNumber) => {
+				const segs = planSegments(turnsRef.current);
+				const segment = segs.find((s) => turnNumber >= s.from && turnNumber <= s.to) ?? segs[0];
+				if (segment !== void 0) jump(segment);
+			};
+			const jumpRef = react.default.useRef(jumpToTurnNumber);
+			jumpRef.current = jumpToTurnNumber;
+			react.default.useEffect(() => {
+				const onGlobalKey = (e) => {
+					const target = e.target;
+					const editable = target !== null && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable === true);
+					const meta = e.metaKey || e.ctrlKey;
+					if (meta && e.key.toLowerCase() === "k") {
+						e.preventDefault();
+						toggleSearch(sessionId ?? "", (turn) => jumpRef.current(turn));
+						return;
+					}
+					if (meta && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+						if (editable) return;
+						e.preventDefault();
+						const cur = lastActiveTurnRef.current >= 0 ? lastActiveTurnRef.current : computeActiveTurn();
+						const idx = turnsRef.current.findIndex((t) => t.index === cur);
+						const base = idx < 0 ? e.key === "ArrowUp" ? turnsRef.current.length : -1 : idx;
+						const nextIdx = Math.max(0, Math.min(turnsRef.current.length - 1, e.key === "ArrowUp" ? base - 1 : base + 1));
+						const next = turnsRef.current[nextIdx];
+						if (next !== void 0) jumpRef.current(next.index);
+					}
+				};
+				window.addEventListener("keydown", onGlobalKey, true);
+				return () => window.removeEventListener("keydown", onGlobalKey, true);
+			}, [sessionId]);
 			if (turns.length < 2) return null;
 			const segments = planSegments(turns);
 			const clearHoverTimer = () => {
@@ -712,16 +972,16 @@ window.__ModuleLoader__.load({
 					const targetTurn = segment.turns[0]?.index ?? 1;
 					const scroller = scrollerOf(flowEl());
 					const prevTop = scroller?.scrollTop ?? 0;
-					let row = userRowOfTurn(targetTurn);
-					for (let i = 0; row === null && hasMoreRef.current && i < 40; i++) {
+					const loaded = () => nodesRef.current.some((n) => n?.turn === targetTurn);
+					for (let i = 0; !loaded() && hasMoreRef.current && i < 40; i++) {
 						try {
 							await loadOnePage(sessionRef);
 						} catch {
 							break;
 						}
 						await new Promise((resolve) => window.setTimeout(resolve, 120));
-						row = userRowOfTurn(targetTurn);
 					}
+					let row = userRowOfTurn(targetTurn);
 					if (row === null) row = nthUserRow(segments.indexOf(segment));
 					if (row === null) return;
 					jumpToRow(row);
@@ -793,6 +1053,7 @@ window.__ModuleLoader__.load({
 					document.getElementById(STYLE_ID)?.remove();
 					document.getElementById("dsh-turnbar-card")?.remove();
 					disposeToast();
+					disposeSearch();
 				};
 			}
 		};

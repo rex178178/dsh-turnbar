@@ -121,4 +121,40 @@ describe('node half: firehose + state route', () => {
     expect(res.statusCode).toBe(404)
     dispose?.()
   })
+
+  it('search route matches full user text and assistant text (v0.2 ⌘K)', async () => {
+    const h = harness()
+    expect(h.routes.has('/plugins/dsh-turnbar/search')).toBe(true)
+    h.fire({ id: 'session-search' }, ev('turn/start', { turn: 1 }, 1))
+    h.fire({ id: 'session-search' }, ev('user/message', { content: '把登录页改成 TypeScript' }, 2))
+    h.fire({ id: 'session-search' }, ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '已完成组件拆分' }] }, usage: { inputTokens: 1, outputTokens: 1 } }, 3))
+    h.fire({ id: 'session-search' }, ev('turn/start', { turn: 2 }, 4))
+    h.fire({ id: 'session-search' }, ev('user/message', { content: '搜索一下这个约束' }, 5))
+    h.fire({ id: 'session-search' }, ev('turn/end', { turn: 2, reason: 'done' }, 6))
+
+    const hit = new MockRes()
+    await h.routes.get('/plugins/dsh-turnbar/search')!.handler(
+      { url: '/plugins/dsh-turnbar/search?sessionId=session-search&q=TypeScript' }, hit as any)
+    expect(hit.statusCode).toBe(200)
+    const matches = JSON.parse(hit.body).matches
+    expect(matches).toHaveLength(1)
+    expect(matches[0].turn).toBe(1)
+    expect(matches[0].userSnippet).toContain('TypeScript')
+
+    // 助手侧文本可命中、大小写不敏感
+    const hit2 = new MockRes()
+    await h.routes.get('/plugins/dsh-turnbar/search')!.handler(
+      { url: '/x?sessionId=session-search&q=组件拆分' }, hit2 as any)
+    expect(JSON.parse(hit2.body).matches[0].turn).toBe(1)
+
+    // 无命中 → 空数组；缺参数 → 400
+    const miss = new MockRes()
+    await h.routes.get('/plugins/dsh-turnbar/search')!.handler(
+      { url: '/x?sessionId=session-search&q=zzz' }, miss as any)
+    expect(JSON.parse(miss.body).matches).toEqual([])
+    const bad = new MockRes()
+    await h.routes.get('/plugins/dsh-turnbar/search')!.handler({ url: '/x?sessionId=' }, bad as any)
+    expect(bad.statusCode).toBe(400)
+    h.dispose()
+  })
 })

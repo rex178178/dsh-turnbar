@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260816T053520161Z-44260-bc53b6580921",
+  "runId": "20260816T053520161Z-44260-bc53b6580921",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "e827002164923f676255626acdd577f0d20d700b",
+  "diffHash": "98f13b8d99e6abb62beb2b477c4f877945eee84ef65904910feae56cf8026fc8",
+  "rulesVersion": "unavailable",
+  "sessionHash": "5f7911486b8fec1373d5b75e84b65a85e0cf2fc4dc6c6fc42a69b2d7780d6349",
+  "reportRef": ".mimosa/reports/task-review-sess_55a50d79-06f7-4678-ba20-ceb5343e659f-20260816T053520161Z-44260-bc53b6580921.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "src/core/types.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/core/first-line.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/core/fold.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/index.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/client/search.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/client/index.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "test/fold.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "test/host-half.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "lib/client.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-08-16T05:35:20.373Z"
+}

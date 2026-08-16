@@ -9,7 +9,7 @@
  * assistant/message {turn, step, message, usage}；
  * tool/call {turn, step, callId, name, arguments}。
  */
-import { assistantFirstLine, userFirstLine } from './first-line'
+import { assistantFirstLine, assistantSearchText, userFirstLine, userSearchText } from './first-line'
 import type { ChapterBreak, SessionEventLike, SessionNavState, TurnRecord, TurnRole } from './types'
 
 /** 文件修改类工具注册表（name → 路径参数键 + 只读命令）。扩展点：dsh 工具名变更只改这里。 */
@@ -39,6 +39,8 @@ interface TurnDraft {
   role: TurnRole
   userFirstLine: string
   assistantFirstLine: string
+  searchUser: string
+  searchAssistant: string
   startedAt: number
   endedAt?: number
   tokenIn: number
@@ -64,6 +66,7 @@ export class SessionFold {
   private readonly order: number[] = []
   /** 尚无轮次可归属的用户消息（会话开头的排队输入，等待下一个 turn/start 认领）。 */
   private readonly pendingUsers: string[] = []
+  private readonly pendingUsersFull: string[] = []
   private readonly chapterBreaks: ChapterBreak[] = []
   private lastStarted: number | null = null
 
@@ -90,13 +93,21 @@ export class SessionFold {
       }
       case 'user/message': {
         const line = userFirstLine(data.content)
+        const full = userSearchText(data.content)
         const current = this.lastStarted !== null ? this.drafts.get(this.lastStarted) : undefined
         // 轮次进行中：首条即触发消息，其余算 steering；轮已结束或未开始：排队等下一个 turn。
         if (current !== undefined && current.endedAt === undefined) {
-          if (current.userFirstLine === '') current.userFirstLine = line
-          else current.steeringCount++
+          if (current.userFirstLine === '') {
+            current.userFirstLine = line
+            current.searchUser = full
+          } else {
+            current.steeringCount++
+            if (full !== '') current.searchUser += `\n${full}`
+          }
         } else {
           this.pendingUsers.push(line)
+          // 排队消息的全文暂存，turn/start 认领时写入。
+          this.pendingUsersFull.push(full)
         }
         break
       }
@@ -106,10 +117,17 @@ export class SessionFold {
         // 排队中的用户消息被新轮认领：第一条是触发消息，其余是 steering。
         for (let i = 0; i < this.pendingUsers.length; i++) {
           const line = this.pendingUsers[i] ?? ''
-          if (i === 0 && draft.userFirstLine === '') draft.userFirstLine = line
-          else draft.steeringCount++
+          const full = this.pendingUsersFull[i] ?? ''
+          if (i === 0 && draft.userFirstLine === '') {
+            draft.userFirstLine = line
+            draft.searchUser = full
+          } else {
+            draft.steeringCount++
+            if (full !== '') draft.searchUser += `\n${full}`
+          }
         }
         this.pendingUsers.length = 0
+        this.pendingUsersFull.length = 0
         this.lastStarted = draft.index
         break
       }
@@ -121,7 +139,10 @@ export class SessionFold {
           draft.tokenIn += typeof usage.inputTokens === 'number' ? usage.inputTokens : 0
           draft.tokenOut += typeof usage.outputTokens === 'number' ? usage.outputTokens : 0
         }
-        if (draft.assistantFirstLine === '') draft.assistantFirstLine = assistantFirstLine(data.message)
+        if (draft.assistantFirstLine === '') {
+          draft.assistantFirstLine = assistantFirstLine(data.message)
+          draft.searchAssistant = assistantSearchText(data.message)
+        }
         break
       }
       case 'tool/call': {
@@ -164,6 +185,8 @@ export class SessionFold {
         role: 'user',
         userFirstLine: '',
         assistantFirstLine: '',
+        searchUser: '',
+        searchAssistant: '',
         startedAt: time,
         tokenIn: 0,
         tokenOut: 0,
@@ -188,6 +211,8 @@ export class SessionFold {
         role: draft.role,
         userFirstLine: draft.userFirstLine,
         assistantFirstLine: draft.assistantFirstLine,
+        searchUser: draft.searchUser,
+        searchAssistant: draft.searchAssistant,
         startedAt: draft.startedAt,
         endedAt: draft.endedAt,
         tokenIn: draft.tokenIn,

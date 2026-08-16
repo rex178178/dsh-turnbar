@@ -44,3 +44,24 @@ export function assistantFirstLine(message: unknown, max = 200): string {
   if (message === null || typeof message !== 'object') return ''
   return firstLine(blocksToText((message as { content?: unknown }).content), max)
 }
+
+/** 搜索用全文（v0.2 ⌘K）：仅剥 markdown 语法，保留内容与换行，截断保护。 */
+export function searchText(content: unknown, max: number): string {
+  const raw = blocksToText(content)
+  const stripped = raw
+    .replace(FENCE, ' ')
+    .replace(IMAGE, ' ')
+    .replace(LINK, '$1')
+    .replace(/[ \t]+/g, ' ')
+    .trim()
+  return stripped.length <= max ? stripped : stripped.slice(0, max)
+}
+
+export function userSearchText(content: unknown, max = 4000): string {
+  return searchText(content, max)
+}
+
+export function assistantSearchText(message: unknown, max = 2000): string {
+  if (message === null || typeof message !== 'object') return ''
+  return searchText((message as { content?: unknown }).content, max)
+}
