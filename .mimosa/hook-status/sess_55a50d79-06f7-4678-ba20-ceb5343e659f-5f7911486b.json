@@ -1,14 +1,37 @@
 {
   "schemaVersion": "mimosa-hook-status/v1",
-  "recordedAt": "2026-08-16T02:54:02.397Z",
+  "recordedAt": "2026-08-16T02:58:02.962Z",
   "sessionId": "sess_55a50d79-06f7-4678-ba20-ceb5343e659f",
-  "event": "PostToolUse",
+  "event": "PreToolUse",
   "toolName": "Edit",
-  "file": "test/card.test.ts",
+  "file": "SPIKE.md",
   "outcome": "clear",
   "coverage": "complete",
   "findingCount": 0,
-  "durationMs": 4,
-  "hostState": "hook_complete",
+  "durationMs": 3,
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "PreToolUse",
+    "outcome": "complete",
+    "latencyMs": 3,
+    "peakMemoryBytes": 110624768,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 1,
+    "cache": {
+      "hits": 0,
+      "misses": 1,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "hostState": "hook_complete_waiting_host_tool_decision",
   "reportHint": ".mimosa/reports/"
 }

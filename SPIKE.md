@@ -89,7 +89,14 @@
 3. **UI 框架选型锁定：平台 React**。插槽组件类型 `SlotComponent<P> = (props: P) => ReactNode`（`packages/client/ui-slots/src/index.ts:370`），React 18 由 client runtime 平台冻结表提供，插槽组件天然是 React——不引入 Web Component 桥。
 4. **（新增）文件工具**：dsh 的文件编辑工具为 `str_replace_editor`（参数 `path`，`command: view|create|...`，`view` 只读），已录入 fold 的 FILE_TOOLS 注册表。
 
-## D3 交付快照（2026-08-16，真机 dsh 0.1.0-rc.6 实测通过）
+## D4 交付快照（2026-08-16，commit 见 git log；34/34 单测绿，真机交互验证待用户在浏览器执行）
+
+- 悬停预览卡（`src/client/card.ts` 单例 + TurnBar 集成）：120ms 延迟出卡 / 已可见零延迟切换 / 100ms 隐藏宽限 / rAF 节流（指针移动零 React 重渲染）/ textContent 填充 / 视口 clamp + 顶部 <220px 翻转。信息架构与 meta 行（🔧/📄/~tok/+N 补充）按 PLAN §5.1/§5.2 落地；组级卡片（>150 轮）显示区间 + 前 3 条用户句。
+- 拖动 scrub：按住 >4px 进入，卡片实时跟随最近轮次（等宽 flex → 纯算术索引，无逐段 DOM 测量），松手跳转 + 200ms click 抑制。
+- 工程要点：hooks 全部先于条件 return（数据 0→N 到达时 hook 顺序恒定——D3 踩过的静默吞错让这类错误不可见，必须预防）；`React.PointerEvent` 类型在 any-shim 下不可用，用本地 `PointerEventLike`。
+- **真机验证遗留**：IAB webview 宿主当日失联（非插件问题），悬停/scrub 的浏览器内验证由用户在 http://127.0.0.1:8791 刷新后执行（asset-tracker 会话，22 轮）。D5 首件事：重跑此验证 + playhead/Esc 返回。
+
+
 
 **闭环验证**：隔离测试 profile（`~/.dsh/profiles/turnbar-test`，插件以 link 安装）+ 真实 16 轮历史会话——进度条渲染 16 段全量图；点击第 1 段自动分页加载（turn-tail 5→16）、滚动跳转、2.5s flash 高亮命中早期轮用户行。
 
