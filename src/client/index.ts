@@ -69,9 +69,11 @@ const CSS = `
   background: rgba(128, 128, 140, .18);
   color: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
 }
+/* 内描边 ring：画在行盒内部——outline 画在行外会被滚动容器上缘裁掉，
+   高行（粘贴/工具爆发）的外框也会超出视口被裁；inset 两种情况都不裁。 */
 [data-turnbar-flash] {
-  outline: 2px solid var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
-  outline-offset: 2px; border-radius: 6px;
+  box-shadow: inset 0 0 0 2px var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
+  border-radius: 6px;
   animation: turnbar-flash 2.5s ease-out forwards;
 }
 @keyframes turnbar-flash { 0% { background-color: rgba(76, 154, 255, .18) } 70% { background-color: rgba(76, 154, 255, .12) } 100% { background-color: transparent } }
@@ -239,10 +241,12 @@ function loadEarlierVisible(flow: HTMLElement | null): boolean {
 
 /**
  * 定位 turn N 的触发消息行（区间法，鲁棒于"纯工具轮不渲染轮尾"）：
- * 从下一个存在的轮尾（>N）向前走到上一个轮尾（<N），区间内第一条 user 行
- * 即触发消息。区间无下界（目标轮之前的轮未加载）且上方仍有历史时返回 null
- * ——此时"窗口顶部行"不是第一轮，调用方必须继续翻页（v0.2 曾因此把
- * 点击第一段错误落在窗口顶部行上）。
+ * 区间下界（含）= 自身轮尾（存在时不得越过——无用户行的轮曾因此错取下一轮
+ * 触发消息）→ 下一个更大轮尾 → 流底（目标 = 末轮：末轮永远在已加载窗口内，
+ * v0.2.2 曾因无下界而全量翻页 + 空等 2s）。
+ * 区间上界（不含）= 上一个更小轮尾；无上界时必须真·到顶（无「更早」按钮且
+ * 首个轮尾可信）才走查——否则把窗口顶行当第一轮（v0.2 跨分页竞态根因）。
+ * 区间内最后收集到的（= 文档序第一条）user 行即触发消息。
  *
  * ⚠️ 兄弟层：dsh 现行 DOM 把每一行包在 flowItem（[data-chat-flow-key]）里，
  * 轮尾/用户行不是同一父级的兄弟——必须在 flowItem 层走查，再在各自
@@ -253,22 +257,25 @@ function userRowOfTurn(turn: number): HTMLElement | null {
   const flow = flowEl()
   if (flow === null) return null
   const tails = [...flow.querySelectorAll<HTMLElement>('[data-turn-tail]')]
-  const next = tails.find(t => Number(t.getAttribute('data-turn-tail')) > turn)
-  if (next === undefined) return null
-  const prev = [...tails].reverse().find(t => Number(t.getAttribute('data-turn-tail')) < turn)
-  if (prev === undefined && loadEarlierVisible(flow)) return null
-  // 无下界且顶部无「更早」按钮时，仅当首个轮尾就是第 1 轮才可信（真·已到顶）。
-  // 否则可能是最后一页的局部提交（轮尾尚未渲染完）——此刻走查会溢到流顶
-  // （曾致搜索跳 #3 落在轮 1/轮 5），必须视为未就绪。
-  if (prev === undefined) {
-    const firstTurn = Number(tails[0]?.getAttribute('data-turn-tail'))
-    if (firstTurn !== 1) return null
-  }
-  const nextItem = next.closest<HTMLElement>('[data-chat-flow-key]')
+  const tailNo = (t: Element | undefined): number => Number(t?.getAttribute('data-turn-tail'))
+  const own = tails.find(t => tailNo(t) === turn)
+  const lowerTail = own ?? tails.find(t => tailNo(t) > turn)
+  const lowerItem = lowerTail !== undefined
+    ? lowerTail.closest<HTMLElement>('[data-chat-flow-key]')
+    : lastFlowItem(flow)
+  if (lowerItem === null) return null
+  const prev = [...tails].reverse().find(t => tailNo(t) < turn)
   const prevItem = prev !== undefined ? prev.closest<HTMLElement>('[data-chat-flow-key]') : null
-  if (nextItem === null) return null
+  if (prev === undefined) {
+    // 上界缺失：上方仍有未加载历史 → 继续翻页；到顶后还要求首个轮尾即第 1 轮
+    // ——否则第 1 轮自身无轮尾（aborted 无 closing），走查必溢进第 2 轮区间，
+    // 此情形交给 turnAnchorRow 锚流顶首行（局部提交判定同 v0.2.2：曾致搜索
+    // 跳 #3 落在轮 1/轮 5）。
+    if (loadEarlierVisible(flow)) return null
+    if (tails.length > 0 && tailNo(tails[0]) !== 1) return null
+  }
   const found: HTMLElement[] = []
-  let item: Element | null = nextItem
+  let item: Element | null = lowerItem
   while (item !== null && item !== prevItem) {
     for (const row of item.querySelectorAll<HTMLElement>('[data-time-hover-root]')) {
       if (isUserRow(row)) { found.push(row); break }
@@ -279,6 +286,20 @@ function userRowOfTurn(turn: number): HTMLElement | null {
   return found[found.length - 1] ?? null
 }
 
+/** 流内最后一个内容行（末轮无轮尾时的区间下界 = 流底）。 */
+function lastFlowItem(flow: HTMLElement): HTMLElement | null {
+  const items = flow.querySelectorAll<HTMLElement>('[data-chat-flow-key]')
+  return items[items.length - 1] ?? null
+}
+
+/** 真到顶后的第一个内容行（跳过「加载更早」按钮所在行）——第 1 轮区间的起点。 */
+function firstFlowItem(flow: HTMLElement): HTMLElement | null {
+  for (const item of flow.querySelectorAll<HTMLElement>('[data-chat-flow-key]')) {
+    if (loadEarlierButton(item) === null) return item
+  }
+  return null
+}
+
 function nthUserRow(n: number): HTMLElement | null {
   const flow = flowEl()
   if (flow === null) return null
@@ -287,46 +308,56 @@ function nthUserRow(n: number): HTMLElement | null {
 }
 
 /**
- * 目标轮没有用户行的锚点（纯工具轮不渲染用户行，userRowOfTurn 恒 null）：
- * 自身有轮尾 → 锚轮尾行；否则锚前一轮尾所在 flowItem 的下一个 flowItem
- * （= 目标轮区间第一行）。这样跳 #4（纯工具轮）会落在轮 4 的区间内，
- * 而不是错误地高亮下一轮的用户行。
+ * 目标轮没有用户行时的锚点（纯工具轮 / goal 轮——DOM 只渲染上下文行，无
+ * data-time-hover-root 用户气泡）：统一锚「区间第一行」——前一轮尾的下一个
+ * flowItem；无上界（目标 = 第 1 轮）且真·到顶时锚流顶第一个内容行。
+ * 这样跳 #4（纯工具轮）/ #1（goal 轮）都从该轮开头看起，而不是高亮下一轮
+ * 的用户行或停在轮尾。
  */
 function turnAnchorRow(turn: number): HTMLElement | null {
   const flow = flowEl()
   if (flow === null) return null
   const tails = [...flow.querySelectorAll<HTMLElement>('[data-turn-tail]')]
-  const own = tails.find(t => Number(t.getAttribute('data-turn-tail')) === turn)
-  if (own !== undefined) return own
   const prev = [...tails].reverse().find(t => Number(t.getAttribute('data-turn-tail')) < turn)
   if (prev !== undefined) {
     // 行在 flowItem 层，prev 轮尾自身的 nextElementSibling 是 slot 内的 null
     const prevItem = prev.closest<HTMLElement>('[data-chat-flow-key]')
     const nextItem = prevItem?.nextElementSibling
     if (nextItem !== null && nextItem !== undefined) return nextItem as HTMLElement
+    return null
   }
-  return null
+  // 无上界：只有真·到顶（无「更早」按钮）才可锚流顶，否则上方还有未加载历史。
+  if (loadEarlierVisible(flow)) return null
+  return firstFlowItem(flow)
 }
 
-/** 目标轮区间的走查边界是否已齐备（prev/next 轮尾都在）。
- * 局部提交期间边界缺失：此时接受锚点会落在轮尾上而非用户行（搜索跳 #3
- * 曾稳定落在 tail-3——视图停在轮尾而不是触发消息）。 */
+/** 目标轮区间的走查边界是否已齐备（等待期接受锚点的前置门）。
+ * 有上界（前一轮尾在）即可信——下界由自身/更大轮尾或流底保证。无上界时
+ * 只有真·到顶才可信：首尾轮尾=1（常规），或目标就是第 1 轮（第 1 轮自身
+ * aborted 无轮尾 → 首个轮尾>1，锚流顶首行仍是正确答案；此门只在翻页
+ * 终止后的等待循环里求值，无局部提交窗口）。 */
 function intervalBounded(turn: number): boolean {
   const flow = flowEl()
   if (flow === null) return false
   const tails = [...flow.querySelectorAll<HTMLElement>('[data-turn-tail]')]
-  if (!tails.some(t => Number(t.getAttribute('data-turn-tail')) > turn)) return false
-  if (turn === 1) return true
-  return tails.some(t => Number(t.getAttribute('data-turn-tail')) < turn)
+  const tailNo = (t: Element | undefined): number => Number(t?.getAttribute('data-turn-tail'))
+  if (tails.some(t => tailNo(t) < turn)) return true
+  if (loadEarlierVisible(flow)) return false
+  return tailNo(tails[0]) === 1 || turn === 1
 }
 
-/** navbar 验证过的跳转配方：wheel 事件兜底旧基线 + 一步写入 scrollTop。 */
+/** navbar 验证过的跳转配方：wheel 事件兜底旧基线 + 一步写入 scrollTop。
+ * 顶部留白：flash 内描边与行自身不再贴死滚动容器上缘（曾致高亮上缘被裁切）。 */
+const JUMP_TOP_MARGIN_PX = 16
+
 function jumpToRow(row: HTMLElement): void {
   const scroller = scrollerOf(flowEl())
   if (scroller === null) return
   scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true, cancelable: true }))
-  const target = scroller.scrollTop + row.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-  scroller.scrollTop = target
+  const target = scroller.scrollTop
+    + row.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    - JUMP_TOP_MARGIN_PX
+  scroller.scrollTop = Math.max(0, target)
 }
 
 function flashRow(row: HTMLElement): void {
@@ -652,9 +683,12 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     const bar = barRef.current
     if (bar === null) return
     if (scrubSegRef.current === segmentIndex) return
-    const prev = bar.children[scrubSegRef.current] as HTMLElement | undefined
+    // children[0] 是 playhead div：按 children[segmentIndex] 取会整体左移一格
+    // （showCardFor 修过同款偏移，这里 v0.2.2 漏网）。
+    const segs = bar.querySelectorAll('[data-turnbar-seg]')
+    const prev = segs[scrubSegRef.current] as HTMLElement | undefined
     prev?.classList.remove('scrub-target')
-    const next = bar.children[segmentIndex] as HTMLElement | undefined
+    const next = segs[segmentIndex] as HTMLElement | undefined
     next?.classList.add('scrub-target')
     scrubSegRef.current = segmentIndex
   }
@@ -662,7 +696,8 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
   const clearScrubHighlight = (): void => {
     const bar = barRef.current
     if (bar === null) return
-    const prev = bar.children[scrubSegRef.current] as HTMLElement | undefined
+    const segs = bar.querySelectorAll('[data-turnbar-seg]')
+    const prev = segs[scrubSegRef.current] as HTMLElement | undefined
     prev?.classList.remove('scrub-target')
     scrubSegRef.current = -1
   }

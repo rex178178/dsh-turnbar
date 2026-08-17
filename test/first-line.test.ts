@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { firstLine, stripMarkdownLite, userFirstLine } from '../src/core/first-line'
+import { firstLine, goalObjective, stripMarkdownLite, userFirstLine } from '../src/core/first-line'
 
 describe('stripMarkdownLite', () => {
   it('replaces fenced code blocks with a line count', () => {
@@ -36,5 +36,29 @@ describe('userFirstLine over content shapes', () => {
   it('returns empty string for nothing usable', () => {
     expect(userFirstLine([{ type: 'image' }])).toBe('')
     expect(userFirstLine(undefined)).toBe('')
+  })
+})
+
+describe('goalObjective（v0.2.3：goal 轮回显提取用户真实输入）', () => {
+  const wrap = (objective: string): unknown => [{
+    type: 'text',
+    text: `<goal_round>\nObjective: "${objective}"\nRound: 1/256\n\nContinue working toward the objective.\n</goal_round>`,
+  }]
+
+  it('extracts the quoted objective incl. CJK/punctuation', () => {
+    expect(goalObjective(wrap('测试一下我们刚做的这个Turn Bar 的 DSH 的插件，有没有哪些问题？')))
+      .toBe('测试一下我们刚做的这个Turn Bar 的 DSH 的插件，有没有哪些问题？')
+    expect(goalObjective(wrap('multi\nline objective'))).toBe('multi\nline objective')
+  })
+
+  it('accepts string content too', () => {
+    expect(goalObjective('<goal_round>\nObjective: "纯字符串"')).toBe('纯字符串')
+  })
+
+  it('returns empty for non-goal-round payloads (format drift → filtered as echo)', () => {
+    expect(goalObjective(wrap(''))).toBe('')
+    expect(goalObjective([{ type: 'text', text: 'SYNTH-USER-149060' }])).toBe('')
+    expect(goalObjective('普通用户消息')).toBe('')
+    expect(goalObjective(null)).toBe('')
   })
 })

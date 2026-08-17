@@ -9,7 +9,7 @@
  * assistant/message {turn, step, message, usage}；
  * tool/call {turn, step, callId, name, arguments}。
  */
-import { assistantFirstLine, assistantSearchText, userFirstLine, userSearchText } from './first-line'
+import { assistantFirstLine, assistantSearchText, goalObjective, userFirstLine, userSearchText } from './first-line'
 import type { ChapterBreak, SessionEventLike, SessionNavState, TurnRecord, TurnRole } from './types'
 
 /** 文件修改类工具注册表（name → 路径参数键 + 只读命令）。扩展点：dsh 工具名变更只改这里。 */
@@ -92,14 +92,19 @@ export class SessionFold {
         break
       }
       case 'user/message': {
-        // 只认真实用户消息（source.kind === 'user'）：plugin/skill-catalog/
-        // agent-instructions 的系统回显（如权限策略变更）不进轮次内容——
-        // 否则卡片首句会显示 "The approval policy changed..." 这类噪声。
-        // 旧版 dsh 无 source 字段时按用户消息处理（向后兼容）。
+        // 只认真实用户消息：plugin/skill-catalog/agent-instructions 的系统回显
+        // （如权限策略变更）不进轮次内容——否则卡片首句会显示
+        // "The approval policy changed..." 这类噪声。旧版 dsh 无 source 字段时按
+        // 用户消息处理（向后兼容）。
+        // 例外：goal 轮回显的 Objective 引号文本就是用户 `/goal` 的真实输入
+        // （实测「继续」会话轮 1：DOM 渲染为上下文行、无用户气泡，折叠层再
+        // 丢弃的话首句/搜索全部为空）——提出 Objective 才按用户消息归轮。
         const srcKind = asRecord(data.source)?.kind
-        if (typeof srcKind === 'string' && srcKind !== 'user') break
-        const line = userFirstLine(data.content)
-        const full = userSearchText(data.content)
+        const goalText = srcKind === 'goal' ? goalObjective(data.content) : ''
+        const isGoalRound = goalText !== ''
+        if (typeof srcKind === 'string' && srcKind !== 'user' && !isGoalRound) break
+        const line = isGoalRound ? goalText : userFirstLine(data.content)
+        const full = isGoalRound ? goalText : userSearchText(data.content)
         const current = this.lastStarted !== null ? this.drafts.get(this.lastStarted) : undefined
         // 轮次进行中：首条即触发消息，其余算 steering；轮已结束或未开始：排队等下一个 turn。
         if (current !== undefined && current.endedAt === undefined) {

@@ -156,3 +156,57 @@ describe('SessionFold user-message attribution (synthetic)', () => {
     expect(state.turns[0]?.endReason).toBe('done')
   })
 })
+
+describe('SessionFold goal-round attribution（v0.2.3）', () => {
+  const ev = (type: string, data: unknown, seq = 0): SessionEventLike =>
+    ({ type, seq, time: seq * 1000, data })
+  const goalRound = (objective: string, seq: number): SessionEventLike =>
+    ev('user/message', {
+      content: [{ type: 'text', text: `<goal_round>\nObjective: "${objective}"\nRound: 1/256\n</goal_round>` }],
+      source: { kind: 'goal', goalId: 'g-1', revision: 1, round: 1 },
+    }, seq)
+
+  it('goal round becomes the trigger first line of its turn (用户 /goal 输入)', () => {
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      goalRound('做完整的用户测试，然后把你找到的问题都记下来', 2),
+      ev('user/message', { content: 'The approval policy changed', source: { kind: 'plugin' } }, 3),
+      ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '开始' }] } }, 4),
+      ev('turn/end', { turn: 1, reason: 'aborted' }, 5),
+    ])
+    expect(state.turns[0]?.userFirstLine).toBe('做完整的用户测试，然后把你找到的问题都记下来')
+    expect(state.turns[0]?.searchUser).toContain('用户测试')
+    expect(state.turns[0]?.steeringCount).toBe(0)
+  })
+
+  it('a second goal round in the same turn counts as steering', () => {
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      goalRound('目标 A', 2),
+      goalRound('目标 A', 3),
+      ev('turn/end', { turn: 1, reason: 'completed' }, 4),
+    ])
+    expect(state.turns[0]?.userFirstLine).toBe('目标 A')
+    expect(state.turns[0]?.steeringCount).toBe(1)
+  })
+
+  it('goal echo without extractable objective stays filtered (format drift 兜底)', () => {
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      ev('user/message', { content: [{ type: 'text', text: 'SYNTH-USER-149060' }], source: { kind: 'goal' } }, 2),
+      ev('turn/end', { turn: 1, reason: 'completed' }, 3),
+    ])
+    expect(state.turns[0]?.userFirstLine).toBe('')
+    expect(state.turns[0]?.steeringCount).toBe(0)
+  })
+
+  it('queued goal round is claimed by the next turn like a queued user input', () => {
+    const state = foldSessionEvents([
+      goalRound('先排队的目标', 1),
+      ev('turn/start', { turn: 1 }, 2),
+      ev('turn/end', { turn: 1, reason: 'completed' }, 3),
+    ])
+    expect(state.turns[0]?.userFirstLine).toBe('先排队的目标')
+    expect(state.danglingUserCount).toBe(0)
+  })
+})

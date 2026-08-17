@@ -3,6 +3,8 @@
 const FENCE = /```[a-zA-Z0-9_-]*\n?([\s\S]*?)```/g
 const IMAGE = /!\[[^\]]*\]\([^)]*\)/g
 const LINK = /\[([^\]]*)\]\([^)]*\)/g
+/** goal 轮回显格式（vendor goal-round-driver）：Objective 引号内即用户 `/goal` 的真实输入。 */
+const GOAL_OBJECTIVE = /<goal_round>\s*Objective:\s*"([^"]+)"/
 
 export function stripMarkdownLite(text: string): string {
   return text
@@ -38,6 +40,12 @@ function blocksToText(content: unknown): string {
 
 export function userFirstLine(content: unknown, max = 160): string {
   return firstLine(blocksToText(content), max)
+}
+
+/** goal 轮回显（source.kind='goal'）里提取用户真实输入：`<goal_round>` 包装的
+ * Objective 引号文本。提不出（格式变更/非 goal 轮）返回 ''，调用方按非用户消息跳过。 */
+export function goalObjective(content: unknown): string {
+  return blocksToText(content).match(GOAL_OBJECTIVE)?.[1] ?? ''
 }
 
 export function assistantFirstLine(message: unknown, max = 200): string {
