@@ -157,4 +157,63 @@ describe('node half: firehose + state route', () => {
     expect(bad.statusCode).toBe(400)
     h.dispose()
   })
+
+  it('recovers via readRaw when inspect rejects a torn/corrupt log (rc.7 strict validation)', async () => {
+    const routes = new Map<string, RecordedRoute>()
+    const ctx = {
+      on: (_e: string, h: (s: unknown, e: unknown) => void) => { (ctx as any)._h = h; return h },
+      off: () => {},
+      _h: undefined as ((s: unknown, e: unknown) => void) | undefined,
+      webServer: {
+        register(route: RecordedRoute) {
+          routes.set(route.path, route)
+          return () => routes.delete(route.path)
+        },
+      },
+      sessionPersistence: {
+        inspect: async () => { throw new Error('corrupt Zstandard session log: complete frame contains a torn JSONL record') },
+        readRaw: async () => ({
+          content: [
+            JSON.stringify(ev('turn/start', { turn: 1 }, 1)),
+            JSON.stringify(ev('user/message', { content: '继续' }, 2)),
+            JSON.stringify(ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '好' }] } }, 3)),
+            JSON.stringify(ev('turn/end', { turn: 1, reason: 'aborted' }, 4)),
+            '{"type":"user/message","seq":5,"time":5000,"data":{"content":[{"type":"text","text":"半截记', // torn line → skipped
+          ].join('\n'),
+        }),
+      },
+    }
+    const dispose = apply(ctx)
+    const res = new MockRes()
+    await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-torn' }, res as any)
+    expect(res.statusCode).toBe(200)
+    const state = JSON.parse(res.body).state
+    expect(state.turns).toHaveLength(1)
+    expect(state.turns[0]).toMatchObject({ index: 1, userFirstLine: '继续', endReason: 'aborted' })
+    dispose?.()
+  })
+
+  it('readRaw with no recoverable lines still degrades to 404', async () => {
+    const routes = new Map<string, RecordedRoute>()
+    const ctx = {
+      on: (_e: string, h: (s: unknown, e: unknown) => void) => { (ctx as any)._h = h; return h },
+      off: () => {},
+      _h: undefined as ((s: unknown, e: unknown) => void) | undefined,
+      webServer: {
+        register(route: RecordedRoute) {
+          routes.set(route.path, route)
+          return () => routes.delete(route.path)
+        },
+      },
+      sessionPersistence: {
+        inspect: async () => ({ events: [] }),
+        readRaw: async () => ({ content: '}torn garbage only{' }),
+      },
+    }
+    const dispose = apply(ctx)
+    const res = new MockRes()
+    await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-garbage' }, res as any)
+    expect(res.statusCode).toBe(404)
+    dispose?.()
+  })
 })

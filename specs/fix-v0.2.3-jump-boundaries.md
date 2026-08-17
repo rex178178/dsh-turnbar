@@ -69,4 +69,23 @@ flowItem 的 `data-chat-flow-key`/`data-chat-flow-kind` 对位（`src/client/loc
 - [x] 真机：#3 flash 落「上下文注入goal」行（fullyVisible、上方仅 turn 2 用户行）；
       #11 落 turn 11 触发行「我换Pro模型推进吧」；A–E 全回归通过（8/8）。
 
+## 追加（第三轮）：rc.7 历史会话 404——损坏日志 + 严格校验，readRaw 兜底
+
+真机复现：换新进程后历史会话进度条不渲染；`/plugins/dsh-turnbar/state` 404。
+深挖（调试插件直调 sessionPersistence）：
+- inspect 对**干净**会话正常（33dd6b21 OK），对 31ed62b0 报
+  "complete frame contains a torn JSONL record"——误导性错误，真实病灶是
+  尾部 **seq 重复**（end-seed 与第一条 spliced 同为 338224）：扫描器在缺口
+  处停止推进 committedBytes → 尾巴全算"未提交" → 报 torn；
+- e5706b74 是同族病（seq gap 57715→57711，dsh 已隔离+备份）。
+
+修复两层：
+1. **数据修复**（本机 31ed62b0）：备份 → 逐帧解码 → 尾部两 spliced 顺延
+   338225/338226 → 重编码（113 帧、checksum）→ inspect 恢复 OK（338227 事件）。
+   已验证 state 路由 200 + 全套 8 项 PASS。
+2. **插件韧性**（host 半区，v0.2.4）：stateOf 回填链加 readRaw 兜底——
+   inspect 抛错/为空时裸读日志文本，逐行 JSON 解析、坏行跳过，fold 不依赖
+   seq 连续 → 损坏日志照样出全量轮次图。新增 2 测试（torn 行恢复 / 纯垃圾
+   仍 404）。注意：seq 缺口对 fold 无影响（只认 turn/start|end 等类型）。
+
 **Output when complete:** `<promise>DONE</promise>`

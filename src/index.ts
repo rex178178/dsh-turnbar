@@ -11,7 +11,7 @@ import { TurnStore } from './core/turn-store'
 import type { SessionEventLike, SessionNavState } from './core/types'
 
 export const name = 'dsh-turnbar'
-export const version = '0.2.3'
+export const version = '0.2.4'
 export const inject: string[] = ['webServer', 'sessionPersistence']
 export const Config = undefined
 
@@ -32,6 +32,8 @@ interface MinimalCtx {
   sessionPersistence?: {
     inspect?(id: string): Promise<{ events: unknown[] }>
     load?(id: string): Promise<{ events: unknown[] }>
+    /** rc.7：裸读日志文本（{meta, filename, content}），不做逐行校验。 */
+    readRaw?(id: string): Promise<{ content?: unknown } | undefined>
   }
 }
 
@@ -62,6 +64,16 @@ export function apply(ctx: unknown): (() => void) | undefined {
   c.on('session/event', onEvent)
 
   // 三级供给：live store（本进程事件）→ sidecar → 持久化层整会话回填（缓存复用）。
+  // 回填两段：inspect（结构校验，rc.7 对半截记录/seq 缺口的日志会抛错——
+  // 真机「继续」会话曾整条 404）→ readRaw 裸读（跳过校验，逐行解析时丢弃坏行，
+  // 恢复完整已提交前缀）。
+  const backfillFrom = (sessionId: string, events: unknown[]): SessionNavState | null => {
+    if (!Array.isArray(events) || events.length === 0) return null
+    const backfill = new TurnStore({ sessionId, persist: false })
+    for (const event of events) backfill.ingestQuiet(event as SessionEventLike)
+    stores.set(sessionId, backfill) // 缓存：state 与 search 共享一次回填
+    return backfill.state
+  }
   const stateOf = async (sessionId: string): Promise<SessionNavState | null> => {
     if (sessionId === '') return null
     const live = stores.get(sessionId)?.state
@@ -69,12 +81,26 @@ export function apply(ctx: unknown): (() => void) | undefined {
     const sidecar = TurnStore.load(sessionId)
     if (sidecar !== null) return sidecar
     const inspection = await c.sessionPersistence?.inspect?.(sessionId).catch(() => undefined)
-    const events = inspection?.events
-    if (!Array.isArray(events) || events.length === 0) return null
-    const backfill = new TurnStore({ sessionId, persist: false })
-    for (const event of events) backfill.ingestQuiet(event as SessionEventLike)
-    stores.set(sessionId, backfill) // 缓存：state 与 search 共享一次回填
-    return backfill.state
+    if (Array.isArray(inspection?.events) && inspection.events.length > 0) {
+      return backfillFrom(sessionId, inspection.events)
+    }
+    // inspect 失败/为空（rc.7 严格校验：corrupt log / torn record / seq gap）→ 裸读。
+    try {
+      const raw = await c.sessionPersistence?.readRaw?.(sessionId).catch(() => undefined)
+      const text = (raw as { content?: unknown } | undefined)?.content
+      if (typeof text === 'string') {
+        const recovered: unknown[] = []
+        for (const line of text.split('\n')) {
+          if (line.trim() === '') continue
+          try {
+            const parsed = JSON.parse(line) as unknown
+            if (parsed !== null && typeof parsed === 'object') recovered.push(parsed)
+          } catch { /* 半截/损坏行跳过——恢复已提交前缀 */ }
+        }
+        if (recovered.length > 0) return backfillFrom(sessionId, recovered)
+      }
+    } catch { /* 裸读兜底失败：维持 404 降级 */ }
+    return null
   }
 
   // 同源数据路由：client 半区 fetch('/plugins/dsh-turnbar/state?sessionId=…')。
