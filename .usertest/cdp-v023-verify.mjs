@@ -148,6 +148,23 @@ try {
   await evalJs(`(() => { const bar = document.querySelector('[data-turnbar]'); bar.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, clientX: 0, clientY: 0, pointerId: 5, pointerType: 'mouse', isPrimary: true, buttons: 0 })) ; return true })()`)
   console.log('E. scrub highlight:', JSON.stringify(out.scrub))
 
+  // ── F. #3（goal 轮）与 #11（前一轮无轮尾）：权威索引定位 ──
+  // 注：E 的 pointerup 留下 200ms suppressClick 窗口，先等它过期再点。
+  await sleep(500)
+  out.f3 = null; out.f11 = null
+  await evalJs(`document.querySelector('[data-turnbar-flash]')?.removeAttribute('data-turnbar-flash')`)
+  await clickSeg(2)  // #3
+  for (let i = 0; i < 40; i++) { await sleep(300); if (await evalJs(`!!document.querySelector('[data-turnbar-flash]')`)) break }
+  await sleep(300)
+  out.f3 = await flowInfo()
+  console.log('F3. click #3:', JSON.stringify(out.f3.flash))
+  await evalJs(`document.querySelector('[data-turnbar-flash]')?.removeAttribute('data-turnbar-flash')`)
+  await clickSeg(10)  // #11
+  for (let i = 0; i < 40; i++) { await sleep(300); if (await evalJs(`!!document.querySelector('[data-turnbar-flash]')`)) break }
+  await sleep(300)
+  out.f11 = await flowInfo()
+  console.log('F11. click #11:', JSON.stringify(out.f11.flash))
+
   // ── 汇总判定 ──
   const pass = []
   pass.push(['18 segments', out.segCount === 18])
@@ -156,6 +173,8 @@ try {
   pass.push(['C 中段 #7 落用户行(含"有几个改进")', (out.midTurn.flash?.text ?? '').includes('有几个改进')])
   pass.push(['D 卡片#1 用户句含"用户测试"', (out.hoverCardUser ?? '').includes('用户测试')])
   pass.push(['E scrub 高亮 = 指针段(idx 5)', out.scrub.highlightedIndex === 5])
+  pass.push(['F3 #3 flash 存在 且 落 turn 3 区间（goal 上下文行，非用户行、非"继续"）', out.f3.flash != null && out.f3.flash.kind !== 'user' && !(out.f3.flash.text ?? '').startsWith('继续')])
+  pass.push(['F11 #11 落 turn 11 触发行(含"我换Pro模型推进吧")', (out.f11.flash?.text ?? '').includes('我换Pro模型推进吧')])
   console.log('\n==== VERDICT ====')
   for (const [name, ok] of pass) console.log(`${ok ? '✅' : '❌'} ${name}`)
   if (pass.some(([, ok]) => !ok)) { console.log('RESULT: FAIL'); process.exitCode = 1 } else console.log('RESULT: PASS')

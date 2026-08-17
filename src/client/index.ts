@@ -13,6 +13,7 @@
 import React from 'react'
 import { isEmptyTurn, planSegments, shouldShowTurnbar, type SegmentSpec } from './grouping'
 import { buildCardModel, buildGroupCardModel, ensureCard, type CardHandle, type CardTurn } from './card'
+import { pickTurnAnchor, type FlowEntry } from './locate'
 import { disposeToast, initToast, showReturnToast } from './toast'
 import { disposeSearch, toggleSearch } from './search'
 
@@ -346,6 +347,51 @@ function intervalBounded(turn: number): boolean {
   return tailNo(tails[0]) === 1 || turn === 1
 }
 
+/** 权威轮次索引定位（store chat.locations.getTurn(N) → 该轮有序节点 key）：
+ * key 与 flowItem 的 data-chat-flow-key 对位、kind 取自 data-chat-flow-kind。
+ * 首个 user 行（触发消息）优先，否则锚该轮首个 DOM 可见行（goal 轮的
+ * context 行 / 纯工具轮的首个内容行）。区间法的两个盲区——前一轮 aborted
+ * 无 data-turn-tail（点 #11 错落 turn 10 触发行）、goal 轮无用户气泡（点 #3
+ * 错落 tool 行）——由索引精确定位消解。索引不可用/未命中/节点未渲染时返回
+ * null，调用方落回 DOM 区间法。 */
+function rowFromTurnIndex(
+  locations: { getTurn?(turn: number): readonly string[] } | null | undefined,
+  turn: number,
+): HTMLElement | null {
+  if (locations === null || locations === undefined || typeof locations.getTurn !== 'function') return null
+  let keys: readonly string[]
+  try { keys = locations.getTurn(turn) } catch { return null }
+  if (!Array.isArray(keys) || keys.length === 0) return null
+  const entries: FlowEntry[] = []
+  const items: HTMLElement[] = []
+  for (const key of keys) {
+    if (typeof key !== 'string' || key === '') continue
+    // 属性选择器引号内只需转义反斜杠与引号（key 形如 "13:input-message…"）；
+    // 平台把全局 CSS 声明为常量字符串，CSS.escape 不可用。
+    const sel = key.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    const item = document.querySelector(`[data-chat-flow-key="${sel}"]`) as HTMLElement | null
+    if (item === null) continue // hidden 节点（如无 closing 的空轮尾壳）不占位
+    entries.push({ key, kind: item.getAttribute('data-chat-flow-kind') ?? '' })
+    items.push(item)
+  }
+  const picked = pickTurnAnchor(entries)
+  if (picked < 0) return null
+  const item: HTMLElement | undefined = items[picked]
+  if (item === undefined) return null
+  if (item.getAttribute('data-chat-flow-kind') === 'user') {
+    return (item.querySelector('[data-time-hover-root]') as HTMLElement | null) ?? item
+  }
+  // 第 1 轮的非 user 锚：会话开头的 command/context 注入行（权限预设、
+  // agent-instructions 等）不在轮次索引里——锚它们之前的流顶首行，
+  // 跳 #1 仍从会话最开头看起（实测曾锚到 182px 深处的首个内容行）。
+  if (turn === 1) {
+    const flow = flowEl()
+    const top = flow !== null ? firstFlowItem(flow) : null
+    if (top !== null) return top
+  }
+  return item
+}
+
 /** navbar 验证过的跳转配方：wheel 事件兜底旧基线 + 一步写入 scrollTop。
  * 顶部留白：flash 内描边与行自身不再贴死滚动容器上缘（曾致高亮上缘被裁切）。 */
 const JUMP_TOP_MARGIN_PX = 16
@@ -421,6 +467,10 @@ function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undef
   const sessionRef = React.useRef(null)
   hasMoreRef.current = hasMore
   sessionRef.current = safeSelect((s: any) => s?.session)
+  // 权威轮次索引（chat.locations.getTurn）：jump 精确定位用，见 rowFromTurnIndex。
+  // （React 为平台 any，useRef 不能带泛型——与 sessionRef 同款。）
+  const locationsRef = React.useRef(null)
+  locationsRef.current = safeSelect((s: any) => s?.chat?.locations) ?? null
 
   const [metaTurns, setMetaTurns] = React.useState(null as SidecarTurn[] | null)
   const metaSigRef = React.useRef('')
@@ -472,7 +522,7 @@ function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undef
     }))
   }, [metaTurns, nodes, running])
 
-  return { sessionId, turns, nodes, hasMoreRef, sessionRef }
+  return { sessionId, turns, nodes, hasMoreRef, sessionRef, locationsRef }
 }
 
 const HOVER_DELAY_MS = 120
@@ -489,7 +539,7 @@ interface PointerEventLike {
 }
 
 const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
-  const { turns, nodes, hasMoreRef, sessionRef, sessionId } = useTurnbarData(props?.useSession)
+  const { turns, nodes, hasMoreRef, sessionRef, locationsRef, sessionId } = useTurnbarData(props?.useSession)
   if (sessionRef.current == null && props?.session !== undefined) sessionRef.current = props.session
 
   const barRef = React.useRef(null as HTMLElement | null)
@@ -782,28 +832,33 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
       const targetTurn = segment.turns[0]?.index ?? 1
       const scroller = scrollerOf(flowEl())
       const prevTop = scroller?.scrollTop ?? 0
-      // 翻页终止条件 = 目标行真正出现（区间法自带"未加载不可信"判定）；
-      // 上限 400 页只是防呆（长会话翻页可能 50+ 页，v0.2 的 40 页上限
-      // 会让长会话点第一段落不到第一轮）。
+      // 权威索引优先（chat.locations.getTurn → rowFromTurnIndex）：区间法对
+      // 「前一轮 aborted 无轮尾」（点 #11 错落 turn 10）和「goal 轮无用户行」
+      // （点 #3 错落 tool 行）有盲区；索引未命中（旧版 dsh / 目标轮未加载）
+      // 落回区间法。
+      // 翻页终止条件 = 目标行真正出现；上限 400 页只是防呆（长会话翻页可能
+      // 50+ 页，v0.2 的 40 页上限会让长会话点第一段落不到第一轮）。
       // 竞态防护：hasMore 翻 false 不代表渲染完成——「加载中…」按钮还在时
       // 继续等待；按钮消失后仍可能处于 React 局部提交（轮尾未渲染），
       // 再等两帧复检，避免把局部提交当最终状态。
-      let row = userRowOfTurn(targetTurn)
+      const locateRow = (): HTMLElement | null =>
+        rowFromTurnIndex(locationsRef.current, targetTurn) ?? userRowOfTurn(targetTurn)
+      let row = locateRow()
       for (let i = 0; row === null && i < 400; i++) {
         const flow = flowEl()
         const pending = flow !== null && (hasMoreRef.current || loadEarlierVisible(flow))
         if (!pending) {
           // 最后一页可能仍在 React 局部提交（轮尾分批渲染）：轮询等待
-          // 直到区间判定可信（userRowOfTurn 非 null，或纯工具轮锚点就绪），
+          // 直到定位可信（索引或区间法命中，或纯工具轮/goal 轮锚点就绪），
           // 上限 2s。guard（首个轮尾非 1 即视为未就绪）保证等待期不会误取。
           const t0 = Date.now()
           while (Date.now() - t0 < 2000) {
             await new Promise(resolve => window.setTimeout(resolve, 80))
             await new Promise(resolve => window.requestAnimationFrame(() => resolve(undefined)))
-            row = userRowOfTurn(targetTurn)
+            row = locateRow()
             if (row !== null) break
-            // 锚点只在区间边界齐备时接受：有用户行的轮优先等 userRowOfTurn
-            // 的精确结果，否则会落在轮尾（曾稳定锚 tail-3）。
+            // 锚点只在区间边界齐备时接受：有用户行的轮优先等精确定位结果，
+            // 否则会落在轮尾（曾稳定锚 tail-3）。
             if (intervalBounded(targetTurn)) {
               const anchor = turnAnchorRow(targetTurn)
               if (anchor !== null) { row = anchor; break }
@@ -813,7 +868,7 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
         }
         try { await loadOnePage(sessionRef) } catch { break }
         await new Promise(resolve => window.setTimeout(resolve, 60))
-        row = userRowOfTurn(targetTurn)
+        row = locateRow()
       }
       // 目标轮无用户行（纯工具轮）：锚到该轮区间内的行（自身轮尾或前一轮尾的下一个 flowItem）。
       if (row === null) row = turnAnchorRow(targetTurn)

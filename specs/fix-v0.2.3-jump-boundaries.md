@@ -51,4 +51,22 @@
   - [ ] 悬停卡 #1 显示「测试一下我们刚做的这个Turn Bar…」用户首句。
   - [ ] scrub 拖动时高亮段 = 指针所在段（无偏移）。
 
+## 追加（同日第二轮）：#3 / #11 落错轮——区间法盲区，权威索引定位
+
+用户复检发现 #3（goal 轮）落 tool 行、#11 落 turn 10 的触发行。根因：DOM 区间
+启发式对两种形态失明——① 前一轮 aborted 无 closing → vendor 只渲染无
+`data-turn-tail` 属性的壳 → #11 的区间 (tail-9, tail-11] 含 turn 10 的触发行；
+② goal 轮触发消息渲染为 context 行（无用户气泡）→ #3 区间内无用户行。
+
+修复：改用 store 权威轮次索引 `chat.locations.getTurn(N)`（有序节点 key）与
+flowItem 的 `data-chat-flow-key`/`data-chat-flow-kind` 对位（`src/client/locate.ts`
+的 `pickTurnAnchor` 纯函数选锚：首个 user 行优先，goal 轮/纯工具轮锚该轮首行；
+第 1 轮非 user 锚回落流顶首行——会话开头的 command/context 注入行不在索引内）。
+索引未命中（旧版 dsh/未加载）回落原区间法。jump 里 `locateRow = 索引 ?? 区间`。
+
+- [x] 单测：pickTurnAnchor 7 例（常规/context 前置/goal 轮/纯工具轮/steering
+      不抢锚/空表/运行中单行）。
+- [x] 真机：#3 flash 落「上下文注入goal」行（fullyVisible、上方仅 turn 2 用户行）；
+      #11 落 turn 11 触发行「我换Pro模型推进吧」；A–E 全回归通过（8/8）。
+
 **Output when complete:** `<promise>DONE</promise>`
