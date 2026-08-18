@@ -5,6 +5,8 @@
  * 填充用 textContent（零 innerHTML，内容不可注入）；定位 clamp 视口 + 顶部不足翻转。
  */
 
+import { formatContextLine, occupancyOf, type ContextLine } from './context'
+
 export interface CardTurn {
   readonly index: number
   readonly userFirstLine?: string
@@ -12,6 +14,8 @@ export interface CardTurn {
   readonly startedAt?: number
   readonly tokenIn?: number
   readonly tokenOut?: number
+  /** 该轮最后一次请求的输入 token（v0.3 上下文余量用）。 */
+  readonly contextUsed?: number
   readonly toolCallCount?: number
   readonly fileChanges?: readonly string[]
   readonly steeringCount?: number
@@ -25,7 +29,14 @@ export interface CardModel {
   readonly user: string
   readonly assistant: string
   readonly meta: string
+  /** 上下文余量行（v0.3）：数据不可得时 undefined（整行不渲染）。 */
+  readonly context?: ContextLine
+  /** 轨迹快捷键提示行（v0.3 F6.1）：幽灵段等不可跳场景由调用方置空。 */
+  readonly hint?: string
 }
+
+/** buildCardModel 的第二参：兼容旧签名传时间戳（测试），新语义传选项对象。 */
+export type CardModelOpts = number | { contextWindow?: number; now?: number }
 
 export function formatRelativeTime(at: number | undefined, now = Date.now()): string {
   if (typeof at !== 'number' || !Number.isFinite(at) || at <= 0) return ''
@@ -55,12 +66,22 @@ function compact(n: number): string {
   return String(n)
 }
 
-export function buildCardModel(turn: CardTurn, now = Date.now()): CardModel {
+function optsOf(opts: CardModelOpts | undefined): { contextWindow: number | undefined; now: number } {
+  return typeof opts === 'number'
+    ? { contextWindow: undefined, now: opts }
+    : { contextWindow: opts?.contextWindow, now: opts?.now ?? Date.now() }
+}
+
+export function buildCardModel(turn: CardTurn, opts?: CardModelOpts): CardModel {
+  const { contextWindow, now } = optsOf(opts)
   const parts: string[] = [`#${turn.index}`]
   const rel = formatRelativeTime(turn.startedAt, now)
   if (rel !== '') parts.push(rel)
   if (turn.running === true) parts.push('运行中')
   const head = parts.join(' · ')
+  // 上下文余量行（v0.3）：该轮最后一次请求时的占用——scrub 扫过即见"那一刻还剩多少"。
+  // 先于幽灵判断计算：已终止的空轮照样消耗过上下文，占用信息真实可显示。
+  const context = formatContextLine(occupancyOf(turn.contextUsed, contextWindow), contextWindow)
 
   // 幽灵轮：无任何内容（被终止的系统注入轮）——卡片只做说明，不假装有内容。
   if ((turn.userFirstLine ?? '') === '' && (turn.assistantFirstLine ?? '') === '' && (turn.toolCallCount ?? 0) <= 0) {
@@ -69,6 +90,7 @@ export function buildCardModel(turn: CardTurn, now = Date.now()): CardModel {
       user: '',
       assistant: '该轮已终止，无对话内容',
       meta: '',
+      context: context ?? undefined,
     }
   }
 
@@ -90,18 +112,25 @@ export function buildCardModel(turn: CardTurn, now = Date.now()): CardModel {
     user: turn.userFirstLine ?? '',
     assistant: turn.assistantFirstLine ?? '',
     meta: metaParts.join(' · '),
+    context: context ?? undefined,
   }
 }
 
-export function buildGroupCardModel(turns: readonly CardTurn[]): CardModel {
+export function buildGroupCardModel(turns: readonly CardTurn[], opts?: CardModelOpts): CardModel {
+  const { contextWindow } = optsOf(opts)
   const first = turns[0]
   const last = turns[turns.length - 1]
   const users = turns.map(t => t.userFirstLine ?? '').filter(s => s !== '').slice(0, 3)
+  // 组卡取末轮占用：组结束后上下文所处的状态。
+  const context = last !== undefined
+    ? formatContextLine(occupancyOf(last.contextUsed, contextWindow), contextWindow)
+    : null
   return {
     head: `#${first?.index ?? '?'}–#${last?.index ?? '?'} · ${turns.length} 轮`,
     user: users.map((line, i) => `${i + 1}. ${line}`).join('\n'),
     assistant: '拖动经过逐轮预览，或在 ⌘K 中精确搜索',
     meta: '',
+    context: context ?? undefined,
   }
 }
 
@@ -153,6 +182,18 @@ function wrap(el: HTMLElement): CardHandle {
         assistant.className = 'tb-assistant'
         assistant.textContent = model.assistant
         el.appendChild(assistant)
+      }
+      if (model.context !== undefined && model.context !== null) {
+        const ctx = document.createElement('div')
+        ctx.className = `tb-context${model.context.level !== 'normal' ? ` tb-context-${model.context.level}` : ''}`
+        ctx.textContent = model.context.text
+        el.appendChild(ctx)
+      }
+      if (model.hint !== undefined && model.hint !== '') {
+        const hint = document.createElement('div')
+        hint.className = 'tb-hint'
+        hint.textContent = model.hint
+        el.appendChild(hint)
       }
       if (model.meta !== '') {
         const meta = document.createElement('div')

@@ -26,6 +26,8 @@ export interface TurnRecord {
   readonly endedAt?: number
   readonly tokenIn: number
   readonly tokenOut: number
+  /** 该轮最后一次 LLM 请求的输入 token（≈该轮结束时的上下文占用；v0.3，无 usage 则缺失）。 */
+  readonly contextUsed?: number
   readonly toolCallCount: number
   /** 文件修改类工具触碰过的路径（str_replace_editor 非 view 命令）。 */
   readonly fileChanges: readonly string[]
@@ -46,6 +48,8 @@ export interface ChapterBreak {
   readonly seq: number
   readonly turn: number
   readonly kind: 'goal' | 'todo'
+  /** goal/change 携带的 Objective 文本（探测性提取，可能缺失；v0.3）。 */
+  readonly label?: string
 }
 
 export interface SessionNavState {

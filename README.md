@@ -52,7 +52,18 @@ and the bar always shows the **whole** conversation.
 - 🔎 **In-conversation search** — the magnifier button at the bar's right edge or
   `⌘K` opens it. Search everything the agent said or you said, across the *whole*
   session (including history beyond what's loaded); results show a count, arrow
-  keys scroll the highlight into view, Enter lands the pick on the bar.
+  keys scroll the highlight into view, Enter lands the pick on the bar. **Results
+  are also drawn on the bar itself** — matching turns glow amber, so a query like
+  "TypeScript" shows you at a glance *where* in the conversation it lives (`v0.3`).
+- ⛽ **Context fuel gauge** — hover any turn to see the context window occupancy
+  *at that moment* ("上下文 62% · 余 38k"), with color escalation at 80%/95%.
+  When the latest turn passes those thresholds, the bar's tail edge glows amber,
+  then red — you notice the tank is nearly empty without even hovering (`v0.3`).
+- 📑 **Chapter ticks** — `/goal` rounds are marked as thin ticks on the bar, so a
+  long session gets visible "milestones" without any manual bookkeeping (`v0.3`).
+- 🧭 **Trajectory view jump** — `⌘/Alt` + click a segment opens the official
+  *Trajectory* view and scrolls to that turn's row, centered and highlighted.
+  Falls back to a normal in-chat jump when trajectory is unavailable (`v0.3`).
 - ⤴ **Click / drag to jump** — click a segment to land in ≤300 ms with a
   highlight ring; press and drag to scrub through turns like a video timeline.
   Jumps across unloaded history page it in automatically.
@@ -69,15 +80,18 @@ Nine navigation plugins appeared in dsh's first four days — all of them are
 *rails, drawers, or dot chains*: a list of user messages you click through.
 dsh-turnbar is the only one shaped like a **video player**:
 
-| | dsh-turnbar | dsh-navbar | dsh-chat-timeline | dsh-message-navigator | dsh-conversation-outline |
-|---|---|---|---|---|---|
-| Form | full-map bar, always visible | sliding dot window | official-rail clone (right rail) | outline drawer | sidebar outline tab |
-| Whole-conversation map (beyond loaded window) | ✅ event log | ❌ | ❌ | ❌ | ❌ |
-| Drag scrub | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Rich hover meta (tools/files/tokens) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `Esc` return | ✅ | ❌ | ❌ | ❌ | ❌ |
-| In-conversation search | ✅ full-text (user + assistant) | ❌ | ❌ | user messages only | ❌ |
-| Standalone install | ✅ | ✅ | ✅ | ✅ | requires better-sidebar |
+| | dsh-turnbar | dsh-navbar | dsh-chat-timeline | dsh-message-navigator | dsh-conversation-outline | dsh-codex-timeline | dsh-outline | dsh-chat-outline | dsh-message-preview | dsh-turn-marks |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Form | full-map bar, always visible | sliding dot window | official-rail clone (right rail) | outline drawer | sidebar outline tab | left rail (Codex-style) | outline overlay | left sidebar outline | right-edge navigator | left-turn strip |
+| Whole-conversation map (beyond loaded window) | ✅ event log | ❌ | ❌ | ❌ | ❌ | ⚠️ auto-loads history | ❌ | ⚠️ full mode on demand | ❌ | ❌ |
+| Drag scrub | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Rich hover meta (tools/files/tokens) | ✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ latency/tok-s only | ❌ | ❌ | ✅ preview | ✅ preview |
+| Context fuel gauge (window occupancy) | ✅ from usage events | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Search (whole conversation incl. assistant) | ✅ + results on the bar | ❌ | ❌ | user msgs only | ❌ | ⚠️ local browser-only | ⚠️ headings/keywords | ⚠️ keyword filter | ❌ | ❌ |
+| Chapter ticks (`/goal` milestones) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ markdown headings | ❌ | ❌ | ❌ |
+| Trajectory view jump | ✅ `⌘/Alt`+click | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Ctrl/Shift click | ❌ | ❌ |
+| `Esc` return | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Survives dsh upgrades | ✅ official slot + graceful degradation | ✅ | ✅ | ✅ | ⚠️ via better-sidebar | ❌ pins an exact dsh commit, uninstall before upgrading | ✅ | ✅ | ✅ | ✅ |
 
 All of them are MIT and genuinely useful — dsh-turnbar just goes further on the
 *feel*: it's a video player, not a list. See also
@@ -103,8 +117,13 @@ Built on paths others paved first — with gratitude:
 
 ## Compatibility
 
-Tested against dsh `0.1.0-rc.5` / `0.1.0-rc.6` (web profile). Works with the
-official web UI's `conversation.composer.dock` slot; no patches, no UI hacks.
+Tested against dsh `0.1.0-rc.7` (web profile), also smoke-tested on `rc.5`/`rc.6`.
+Works with the official web UI's `conversation.composer.dock` slot; no patches,
+no UI hacks — which is the point: **upgrading dsh does not require uninstalling
+dsh-turnbar first.** The one plugin that does require that dance is
+[dsh-codex-timeline](https://github.com/Wine-Red/dsh-codex-timeline): it pins an
+exact dsh commit by replacing the official conversation adapter, so the upgrade
+checklist says "uninstall before upgrading". Different trade-off, stated plainly.
 
 Coexists with other plugins that share the same `composer.dock` slot —
 [dsh-web-ui-all](https://www.npmjs.com/package/@linxin666/dsh-web-ui-all) and its
@@ -121,7 +140,8 @@ progress bar too (only brand-new 0-turn sessions stay hidden).
 
 ## Roadmap
 
-- v1.0: auto chapters (task boundaries), bookmarks, token / context-window gauge
+- Next: task-boundary chapters (beyond `/goal`), bookmarks, trajectory ↔ chat
+  round-trip polish.
 
 ## Development
 

@@ -11,7 +11,7 @@ import { TurnStore } from './core/turn-store'
 import type { SessionEventLike, SessionNavState } from './core/types'
 
 export const name = 'dsh-turnbar'
-export const version = '0.2.4'
+export const version = '0.3.0'
 export const inject: string[] = ['webServer', 'sessionPersistence']
 export const Config = undefined
 

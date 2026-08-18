@@ -50,7 +50,7 @@ function isTypingContext(target: EventTarget | null): boolean {
   return true
 }
 
-export function showReturnToast(label: string, onReturn: () => void): void {
+export function showReturnToast(label: string, onReturn: () => void, extra?: string): void {
   const el = ensureEl()
   if (el === null) return
   state.onReturn = onReturn
@@ -61,6 +61,13 @@ export function showReturnToast(label: string, onReturn: () => void): void {
   hint.className = 'tb-toast-return'
   hint.textContent = 'Esc 返回原位'
   el.append(text, hint)
+  // F6.1 首跳教学：extra 以第二行弱色展示（flex-basis 100% 换行），仅出现一次。
+  if (extra !== undefined && extra !== '') {
+    const ex = document.createElement('span')
+    ex.className = 'tb-toast-extra'
+    ex.textContent = extra
+    el.append(ex)
+  }
   el.classList.add('visible')
   clearTimeout(state.timer ?? undefined)
   state.timer = window.setTimeout(hideToast, 5000)

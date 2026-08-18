@@ -45,6 +45,7 @@ interface TurnDraft {
   endedAt?: number
   tokenIn: number
   tokenOut: number
+  contextUsed?: number
   toolCallCount: number
   fileChanges: string[]
   steeringCount: number
@@ -53,6 +54,15 @@ interface TurnDraft {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+}
+
+/** goal/change 的 Objective 文本（探测性提取：字段名随 dsh 版本可能变化，拿不到就缺失）。 */
+function chapterLabel(data: Record<string, unknown>): string | undefined {
+  const candidates = [asRecord(data.goal).objective, data.objective, data.title, data.text]
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim() !== '') return c.trim().slice(0, 160)
+  }
+  return undefined
 }
 
 export class SessionFold {
@@ -149,6 +159,10 @@ export class SessionFold {
         if (usage.inputTokens !== undefined || usage.outputTokens !== undefined) {
           draft.tokenIn += typeof usage.inputTokens === 'number' ? usage.inputTokens : 0
           draft.tokenOut += typeof usage.outputTokens === 'number' ? usage.outputTokens : 0
+          // 后写覆盖：轮内多次请求（工具链）取最后一次 = 该轮结束时的上下文占用。
+          if (typeof usage.inputTokens === 'number' && usage.inputTokens > 0) {
+            draft.contextUsed = usage.inputTokens
+          }
         }
         if (draft.assistantFirstLine === '') {
           draft.assistantFirstLine = assistantFirstLine(data.message)
@@ -185,6 +199,7 @@ export class SessionFold {
           seq,
           turn: this.lastStarted ?? 0,
           kind: event.type === 'goal/change' ? 'goal' : 'todo',
+          label: event.type === 'goal/change' ? chapterLabel(data) : undefined,
         })
         break
       }
@@ -236,6 +251,7 @@ export class SessionFold {
         endedAt: draft.endedAt,
         tokenIn: draft.tokenIn,
         tokenOut: draft.tokenOut,
+        contextUsed: draft.contextUsed,
         toolCallCount: draft.toolCallCount,
         fileChanges: draft.fileChanges,
         steeringCount: draft.steeringCount,

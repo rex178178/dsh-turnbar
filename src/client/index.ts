@@ -11,8 +11,10 @@
  * 悬停/scrub/playhead 状态全部走命令式 DOM（ref + 单例），指针/滚动零 React 重渲染。
  */
 import React from 'react'
-import { isEmptyTurn, planSegments, shouldShowTurnbar, type SegmentSpec } from './grouping'
+import { chapterTickPercents, isEmptyTurn, planSegments, shouldShowTurnbar, type SegmentSpec } from './grouping'
 import { buildCardModel, buildGroupCardModel, ensureCard, type CardHandle, type CardTurn } from './card'
+import { CONTEXT_CRIT, CONTEXT_WARN, latestOccupancy } from './context'
+import { jumpToTrajectory } from './trajectory'
 import { pickTurnAnchor, type FlowEntry } from './locate'
 import { disposeToast, initToast, showReturnToast } from './toast'
 import { disposeSearch, toggleSearch } from './search'
@@ -42,6 +44,8 @@ const CSS = `
   transition: transform .12s ease, background .12s ease;
 }
 [data-turnbar-seg].has-user { background: rgba(128, 128, 140, .6); }
+/* 搜索命中段（v0.3 落图）：琥珀色标出命中位置；ghost/hover 规则在底下仍最高优先。 */
+[data-turnbar-seg].hit { background: rgba(255, 166, 10, .85); }
 [data-turnbar-seg].ghost {
   background: rgba(128, 128, 140, .14);
   cursor: default;
@@ -58,6 +62,22 @@ const CSS = `
   animation: turnbar-pulse 1.2s ease-in-out infinite;
 }
 @keyframes turnbar-pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+/* 章节刻度（v0.3）：goal 轮段左缘 2px 细条，命令式定位（data-pct → translateX）。 */
+[data-turnbar-chapter] {
+  position: absolute; top: 1px; bottom: 1px; left: 8px; width: 2px;
+  border-radius: 1px; pointer-events: none; z-index: 1;
+  background: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
+  opacity: .55;
+}
+/* 条尾上下文余量警示（v0.3）：右缘渐变暖色，不遮段、不加高。 */
+[data-turnbar].ctx-warn {
+  background: linear-gradient(to left, rgba(255, 166, 10, .16), transparent 26%);
+  border-radius: 4px;
+}
+[data-turnbar].ctx-crit {
+  background: linear-gradient(to left, rgba(255, 95, 86, .22), transparent 26%);
+  border-radius: 4px;
+}
 [data-turnbar-search-btn] {
   flex: 0 0 auto; width: 24px; height: 14px; padding: 0; border: none;
   border-radius: 3px; cursor: pointer;
@@ -105,9 +125,19 @@ const CSS = `
 [data-turnbar-card] .tb-meta {
   color: var(--dsw-alias-label-tertiary, #888); font-size: 11px; margin-top: 6px;
 }
+/* 上下文余量行（v0.3）：normal 灰、warn 琥珀、crit 红。 */
+[data-turnbar-card] .tb-context {
+  color: var(--dsw-alias-label-tertiary, #888); font-size: 11px; margin-top: 6px;
+}
+[data-turnbar-card] .tb-context.tb-context-warn { color: #ffa60a; }
+[data-turnbar-card] .tb-context.tb-context-crit { color: #ff5f56; }
+/* 轨迹快捷键提示行（v0.3 F6.1 可发现性）：卡片末行弱色。 */
+[data-turnbar-card] .tb-hint {
+  color: var(--dsw-alias-label-tertiary, #777); font-size: 10px; margin-top: 6px; opacity: .8;
+}
 [data-turnbar-toast] {
   position: fixed; left: 16px; bottom: 20px; z-index: 920;
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
   padding: 8px 14px; border-radius: 10px;
   font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.4;
   color: var(--dsw-alias-label-primary, #eee);
@@ -119,6 +149,10 @@ const CSS = `
 }
 [data-turnbar-toast].visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
 [data-turnbar-toast] .tb-toast-return { color: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff); }
+/* 首跳教学提示行：flex-basis 100% 强制换行，弱色小字。 */
+[data-turnbar-toast] .tb-toast-extra {
+  flex-basis: 100%; color: var(--dsw-alias-label-tertiary, #888); font-size: 11px;
+}
 [data-turnbar-search] {
   position: fixed; top: 15%; left: 50%; z-index: 930;
   width: 480px; max-width: calc(100vw - 32px); box-sizing: border-box;
@@ -472,7 +506,9 @@ function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undef
   const locationsRef = React.useRef(null)
   locationsRef.current = safeSelect((s: any) => s?.chat?.locations) ?? null
 
-  const [metaTurns, setMetaTurns] = React.useState(null as SidecarTurn[] | null)
+  const [meta, setMeta] = React.useState(null as
+    | { turns: SidecarTurn[]; contextWindow?: number; chapterBreaks?: { turn: number; kind: 'goal' | 'todo' }[] }
+    | null)
   const metaSigRef = React.useRef('')
   React.useEffect(() => {
     if (typeof sessionId !== 'string' || sessionId === '') return
@@ -484,10 +520,19 @@ function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undef
         const json = await res.json()
         if (!alive || !Array.isArray(json?.state?.turns)) return
         // 签名不变则不 setState：避免每 5s 轮询无条件换新数组 → 整条重渲染。
-        const sig = JSON.stringify(json.state.turns)
+        // v0.3：余量/章节数据一并入签（turns + contextWindow + chapterBreaks）。
+        const sig = JSON.stringify([
+          json.state.turns,
+          json.state.contextWindow ?? null,
+          json.state.chapterBreaks ?? null,
+        ])
         if (sig === metaSigRef.current) return
         metaSigRef.current = sig
-        setMetaTurns(json.state.turns)
+        setMeta({
+          turns: json.state.turns,
+          contextWindow: typeof json.state.contextWindow === 'number' ? json.state.contextWindow : undefined,
+          chapterBreaks: Array.isArray(json.state.chapterBreaks) ? json.state.chapterBreaks : [],
+        })
       } catch { /* host 半区未激活（如旧版 dsh）→ 走 store 推导 */ }
     }
     void load()
@@ -502,6 +547,7 @@ function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undef
   }, [sessionId])
 
   // 轮次列表（保留富元信息供卡片使用）：sidecar 全量优先；退化为 store 已加载窗口。
+  const metaTurns = meta?.turns ?? null
   const turns: SidecarTurn[] = React.useMemo(() => {
     if (metaTurns !== null && metaTurns.length > 0) {
       return metaTurns.map((t: SidecarTurn, i: number) => ({
@@ -522,12 +568,34 @@ function useTurnbarData(useSession: ((selector: (s: any) => any) => any) | undef
     }))
   }, [metaTurns, nodes, running])
 
-  return { sessionId, turns, nodes, hasMoreRef, sessionRef, locationsRef }
+  return {
+    sessionId,
+    turns,
+    nodes,
+    hasMoreRef,
+    sessionRef,
+    locationsRef,
+    contextWindow: meta?.contextWindow,
+    chapterBreaks: meta?.chapterBreaks ?? [],
+  }
 }
 
 const HOVER_DELAY_MS = 120
 const HIDE_GRACE_MS = 100
 const SCRUB_THRESHOLD_PX = 4
+/** ⌘K 命中广播事件名（search.ts 同款字符串，v0.3 搜索落图）。 */
+const HITS_EVENT = 'dsh-turnbar:hits'
+/** 悬停卡轨迹提示文案（F6.1 可发现性①）。 */
+const TRAJECTORY_CARD_HINT = '⌘/Alt+点击 → 轨迹视图定位'
+/** 首跳教学 toast 的 localStorage 记忆键（F6.1 可发现性②）。 */
+const TRAJECTORY_HINT_KEY = 'dsh-turnbar:hint-traj'
+function trajectoryHintDue(): boolean {
+  try {
+    if (window.localStorage.getItem(TRAJECTORY_HINT_KEY) === '1') return false
+    window.localStorage.setItem(TRAJECTORY_HINT_KEY, '1')
+    return true
+  } catch { return false } // 隐私模式等：不求教学提示，也不反复打扰
+}
 
 interface PointerEventLike {
   clientX: number
@@ -539,7 +607,8 @@ interface PointerEventLike {
 }
 
 const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
-  const { turns, nodes, hasMoreRef, sessionRef, locationsRef, sessionId } = useTurnbarData(props?.useSession)
+  const { turns, nodes, hasMoreRef, sessionRef, locationsRef, sessionId, contextWindow, chapterBreaks } =
+    useTurnbarData(props?.useSession)
   if (sessionRef.current == null && props?.session !== undefined) sessionRef.current = props.session
 
   const barRef = React.useRef(null as HTMLElement | null)
@@ -553,6 +622,12 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
   const suppressClickRef = React.useRef(false)
   const lastMoveRef = React.useRef(null as { x: number; y: number } | null)
   const rafPendingRef = React.useRef(false)
+  /** ⌘K 命中轮（v0.3 落图）：search.ts 经 CustomEvent 广播，段重渲染后重放。 */
+  const hitsRef = React.useRef([] as readonly number[])
+  /** 渲染期同步的段表（applyHits/paintChapterTicks 与 DOM 段同序对位）。 */
+  const segmentsRef = React.useRef([] as readonly SegmentSpec[])
+  /** applyHits 定义在 condition return 之后，事件回调经此 ref 引用（效应期闭包）。 */
+  const applyHitsRef = React.useRef((() => {}) as () => void)
 
   // 卸载清理：卡片随条一起移除。（必须在任何条件 return 之前——hook 顺序恒定）
   React.useEffect(() => () => {
@@ -608,6 +683,33 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     playhead.style.opacity = '1'
   }
 
+  /** 章节刻度定位（v0.3）：data-pct（0–100）→ 实际像素位移，与 playhead 同款命令式。 */
+  const paintChapterTicks = (): void => {
+    const bar = barRef.current
+    if (bar === null) return
+    const usable = barUsableWidth(bar)
+    for (const tick of bar.querySelectorAll('[data-turnbar-chapter]')) {
+      const pct = Number(tick.getAttribute('data-pct'))
+      if (!Number.isFinite(pct)) continue
+      ;(tick as HTMLElement).style.transform = `translateX(${(pct / 100) * usable}px)`
+    }
+  }
+
+  /** 搜索命中落图（v0.3）：segment 含命中轮（非幽灵段）→ .hit。 */
+  const applyHits = (): void => {
+    const bar = barRef.current
+    if (bar === null) return
+    // bar 来自 any 化 ref（React 为平台 any）：回调参数显式注解，避免隐式 any。
+    const segs = bar.querySelectorAll('[data-turnbar-seg]')
+    const hits = hitsRef.current
+    segs.forEach((el: Element, i: number) => {
+      const seg: SegmentSpec | undefined = segmentsRef.current[i]
+      const hit = seg !== undefined && !seg.ghost && hits.some((t: number) => t >= seg.from && t <= seg.to)
+      el.classList.toggle('hit', hit)
+    })
+  }
+  applyHitsRef.current = applyHits
+
   const scrollRafRef = React.useRef(false)
   const onScrollerScroll = (): void => {
     if (scrollRafRef.current) return
@@ -615,6 +717,7 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     window.requestAnimationFrame(() => {
       scrollRafRef.current = false
       paintPlayhead()
+      paintChapterTicks()
     })
   }
 
@@ -625,6 +728,7 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     scroller.addEventListener('scroll', onScrollerScroll, { passive: true })
     window.addEventListener('resize', onScrollerScroll)
     paintPlayhead()
+    paintChapterTicks()
     return () => {
       scroller.removeEventListener('scroll', onScrollerScroll)
       window.removeEventListener('resize', onScrollerScroll)
@@ -633,7 +737,20 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
 
   React.useEffect(() => {
     paintPlayhead()
+    paintChapterTicks()
+    applyHits()
   }, [turns])
+
+  // ── ⌘K 命中广播（v0.3 落图）：search.ts 经 CustomEvent 通知命中轮 ────────
+  React.useEffect(() => {
+    const onHits = (e: Event): void => {
+      const detail = (e as CustomEvent<unknown>).detail
+      hitsRef.current = Array.isArray(detail) ? (detail as readonly number[]) : []
+      applyHitsRef.current()
+    }
+    window.addEventListener(HITS_EVENT, onHits)
+    return () => window.removeEventListener(HITS_EVENT, onHits)
+  }, [])
 
   // ── ⌘K 搜索 + ⌘↑/⌘↓ 逐轮导航（全局键位，均在 hooks 区） ─────────────────
   const lastActiveTurnRef = React.useRef(-1)
@@ -677,6 +794,14 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
 
   if (!shouldShowTurnbar(turns.length)) return null
   const segments: SegmentSpec[] = planSegments(turns)
+  segmentsRef.current = segments
+  // 条尾余量警示（v0.3）：末轮占用 ≥80% warn、≥95% crit；无数据不警示。
+  const occupancy = latestOccupancy(turns, contextWindow)
+  const contextClass = occupancy !== null && occupancy >= CONTEXT_CRIT
+    ? 'ctx-crit'
+    : occupancy !== null && occupancy >= CONTEXT_WARN ? 'ctx-warn' : ''
+  // 章节刻度（v0.3）：只渲染 goal 断点（todo 只记录不渲染，见 grouping.chapterTickPercents）。
+  const chapterPercents = chapterTickPercents(chapterBreaks, segments)
 
   const clearHoverTimer = (): void => {
     if (hoverTimerRef.current !== null) {
@@ -697,9 +822,13 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     if (segment === undefined || bar === null) return
     if (cardRef.current === null) cardRef.current = ensureCard()
     const card = cardRef.current
-    const model = segment.kind === 'turn'
-      ? buildCardModel(segment.turns[0] ?? { index: segment.from })
-      : buildGroupCardModel(segment.turns)
+    // v0.3：卡片余量行用 contextWindow 派生；hint 行提示轨迹快捷键（幽灵段不可跳，不提示）。
+    let model = segment.kind === 'turn'
+      ? buildCardModel(segment.turns[0] ?? { index: segment.from }, { contextWindow })
+      : buildGroupCardModel(segment.turns, { contextWindow })
+    if (model.hint === undefined) {
+      model = { ...model, hint: segment.ghost ? undefined : TRAJECTORY_CARD_HINT }
+    }
     card.fill(model)
     // 锚点必须是段按钮自身：bar.children 里第 0 个是 playhead div，
     // 用 children[segmentIndex] 会整体左移一格、第 1 段直接锚到 playhead
@@ -883,10 +1012,12 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
       // 先跳再判定：diff 需在 scrollTop 写入后计算（D5 曾把判定写在跳转前，
       // 差值恒为 0，toast 永不出现）。
       if (scroller !== null && Math.abs(scroller.scrollTop - prevTop) > 8) {
+        // F6.1 可发现性②：第一次真正跳转后附带一行轨迹快捷键教学（仅一次）。
+        const extra = trajectoryHintDue() ? '提示：⌘+点击可在轨迹视图打开该轮' : undefined
         showReturnToast(`#${targetTurn}`, () => {
           scroller.scrollTop = prevTop
           paintPlayhead()
-        })
+        }, extra)
       }
     })()
   }
@@ -895,9 +1026,12 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
     'div',
     {
       'data-turnbar': '',
+      className: contextClass === '' ? undefined : contextClass,
       ref: (el: HTMLElement | null): void => { barRef.current = el },
       role: 'navigation',
-      'aria-label': 'conversation turns',
+      'aria-label': occupancy !== null
+        ? `conversation turns, 上下文 ${Math.round(occupancy * 100)}%`
+        : 'conversation turns',
       onPointerMove: onPointerMove,
       onPointerLeave: onPointerLeave,
       onPointerDown: onPointerDown,
@@ -910,6 +1044,14 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
         'data-turnbar-playhead': '',
         ref: (el: HTMLElement | null): void => { playheadRef.current = el },
       }, null),
+      // 章节刻度（v0.3）：goal 段左缘细条，data-pct 供命令式定位。
+      ...chapterPercents.map((pct, i) =>
+        React.createElement('div', {
+          key: `chapter-${i}`,
+          'data-turnbar-chapter': '',
+          'data-pct': String(pct),
+        }, null),
+      ),
       ...segments.map(segment =>
         React.createElement('button', {
           key: segment.label,
@@ -924,9 +1066,18 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
           'aria-label': segment.ghost
             ? `turn ${segment.label}（已终止，无内容）`
             : `jump to turn ${segment.label}`,
-          onClick: () => {
+          onClick: (e: { metaKey: boolean; altKey: boolean; ctrlKey: boolean }) => {
             if (suppressClickRef.current) return
             if (segment.ghost) return // 幽灵轮无内容不可跳转
+            // F6 轨迹联动：⌘/Alt+点击 → 切换官方轨迹视图定位该轮；失败回落对话内跳转。
+            if (e.metaKey || e.altKey || e.ctrlKey) {
+              void (async () => {
+                const targetTurn = segment.turns[0]?.index ?? 1
+                const ok = await jumpToTrajectory(sessionRef.current, targetTurn)
+                if (!ok) jump(segment)
+              })()
+              return
+            }
             jump(segment)
           },
         }),

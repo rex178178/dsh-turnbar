@@ -66,3 +66,33 @@ describe('buildGroupCardModel', () => {
     expect(model.user).toBe('1. 修一下构建\n2. 再来一条\n3. 第三条会出现')
   })
 })
+
+describe('context fuel line (v0.3)', () => {
+  it('renders occupancy when both contextUsed and window are present', () => {
+    const model = buildCardModel({ index: 1, contextUsed: 62_000 }, { contextWindow: 100_000 })
+    expect(model.context).toEqual({ text: '上下文 62% · 余 38k', level: 'normal' })
+  })
+  it('hides when context window is unknown (L1 degrade)', () => {
+    expect(buildCardModel({ index: 1, contextUsed: 62_000 }).context).toBeUndefined()
+    expect(buildCardModel({ index: 1 }).context).toBeUndefined()
+  })
+  it('escalates warn and crit levels at thresholds', () => {
+    expect(buildCardModel({ index: 1, contextUsed: 80_000 }, { contextWindow: 100_000 }).context?.level).toBe('warn')
+    expect(buildCardModel({ index: 1, contextUsed: 95_000 }, { contextWindow: 100_000 }).context?.level).toBe('crit')
+  })
+  it('group card takes the last turn occupancy', () => {
+    const model = buildGroupCardModel(
+      [{ index: 1 }, { index: 2, contextUsed: 82_000 }],
+      { contextWindow: 100_000 },
+    )
+    expect(model.context?.text).toBe('上下文 82% · 余 18k')
+  })
+})
+
+describe('history-compatible opts signature (v0.3)', () => {
+  it('still accepts a naked timestamp as second arg for head time', () => {
+    const model = buildCardModel({ index: 9, startedAt: NOW - 7_200_000 }, NOW)
+    expect(model.head).toBe('#9 · 2 小时前')
+    expect(model.context).toBeUndefined()
+  })
+})

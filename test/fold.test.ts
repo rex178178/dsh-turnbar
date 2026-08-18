@@ -209,4 +209,49 @@ describe('SessionFold goal-round attribution（v0.2.3）', () => {
     expect(state.turns[0]?.userFirstLine).toBe('先排队的目标')
     expect(state.danglingUserCount).toBe(0)
   })
+
+  it('records contextUsed as the last request input tokens of the turn (v0.3)', () => {
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      ev('user/message', { content: '算一下', source: { kind: 'user' } }, 2),
+      ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '第一步' }] }, usage: { inputTokens: 10_000, outputTokens: 500 } }, 3),
+      ev('assistant/message', { turn: 1, step: 2, message: { role: 'assistant', content: [{ type: 'text', text: '第二步' }] }, usage: { inputTokens: 22_000, outputTokens: 300 } }, 4),
+      ev('turn/end', { turn: 1, reason: 'done' }, 5),
+    ])
+    // 后写覆盖取末值；tokenIn 仍是累计。
+    expect(state.turns[0]?.contextUsed).toBe(22_000)
+    expect(state.turns[0]?.tokenIn).toBe(32_000)
+  })
+
+  it('keeps contextUsed undefined when no usage is present (v0.3)', () => {
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      ev('user/message', { content: '没有 usage 的会话', source: { kind: 'user' } }, 2),
+      ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '回' }] } }, 3),
+      ev('turn/end', { turn: 1, reason: 'done' }, 4),
+    ])
+    expect(state.turns[0]?.contextUsed).toBeUndefined()
+  })
+
+  it('extracts goal chapter label defensively and keeps todo breaks without label (v0.3)', () => {
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      ev('goal/change', { objective: '让插件更耐用' }, 2),
+      ev('todo/write', { items: [] }, 3),
+      ev('turn/end', { turn: 1, reason: 'done' }, 4),
+    ])
+    const goal = state.chapterBreaks.find(b => b.kind === 'goal')
+    const todo = state.chapterBreaks.find(b => b.kind === 'todo')
+    expect(goal).toMatchObject({ turn: 1, kind: 'goal', label: '让插件更耐用' })
+    expect(todo?.kind).toBe('todo')
+    expect(todo?.label).toBeUndefined()
+  })
+
+  it('goal/change without extractable text leaves label undefined (v0.3)', () => {
+    const state = foldSessionEvents([
+      ev('turn/start', { turn: 1 }, 1),
+      ev('goal/change', { id: 'none-text-field' }, 2),
+    ])
+    expect(state.chapterBreaks[0]?.label).toBeUndefined()
+  })
 })

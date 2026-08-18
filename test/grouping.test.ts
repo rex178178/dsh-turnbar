@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MIN_VISIBLE_TURNS, planSegments, segmentCenterPercent, shouldShowTurnbar, type TurnLite } from '../src/client/grouping'
+import { chapterTickPercents, MIN_VISIBLE_TURNS, planSegments, segmentCenterPercent, shouldShowTurnbar, type TurnLite } from '../src/client/grouping'
 
 const mk = (n: number, user = true): TurnLite[] =>
   Array.from({ length: n }, (_, i) => ({ index: i + 1, userFirstLine: user ? `u${i}` : '' }))
@@ -91,5 +91,25 @@ describe('segmentCenterPercent', () => {
     expect(segmentCenterPercent(-3, 10)).toBeCloseTo(5)
     expect(segmentCenterPercent(99, 10)).toBeCloseTo(95)
     expect(segmentCenterPercent(0, 0)).toBe(0)
+  })
+})
+
+describe('chapterTickPercents (v0.3)', () => {
+  it('renders only goal breaks aligned to the start-of-segment left edge', () => {
+    const segs = [{ from: 1 }, { from: 2 }, { from: 3 }, { from: 4 }]
+    const percents = chapterTickPercents(
+      [
+        { turn: 2, kind: 'goal' },
+        { turn: 3, kind: 'todo' }, // todo 不渲染
+        { turn: 9, kind: 'goal' }, // 无对齐段 → 跳过
+      ],
+      segs,
+    )
+    expect(percents).toEqual([25])
+  })
+  it('empty when no goal breaks or no segments', () => {
+    expect(chapterTickPercents([], [{ from: 1 }])).toEqual([])
+    expect(chapterTickPercents([{ turn: 1, kind: 'goal' }], [])).toEqual([])
+    expect(chapterTickPercents([{ turn: 1, kind: 'todo' }], [{ from: 1 }])).toEqual([])
   })
 })

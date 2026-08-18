@@ -79,3 +79,26 @@ export function segmentCenterPercent(index: number, count: number): number {
   const i = Math.max(0, Math.min(count - 1, index))
   return ((i + 0.5) / count) * 100
 }
+
+/** 章节断点输入（v0.3 章节刻度）。 */
+export interface ChapterBreakLite {
+  readonly turn: number
+  readonly kind: 'goal' | 'todo'
+}
+
+/** 章节刻度位置（v0.3）：只渲染 goal 断点（todo/write 高频、噪声大，只记录不渲染），
+ * 对齐到「以断点轮开头」的段的左缘（0–100 百分比）；无对齐段时跳过该断点。 */
+export function chapterTickPercents(
+  breaks: readonly ChapterBreakLite[],
+  segments: readonly { from: number }[],
+): number[] {
+  const goals = breaks.filter(b => b.kind === 'goal')
+  if (goals.length === 0 || segments.length === 0) return []
+  const out: number[] = []
+  for (const b of goals) {
+    const idx = segments.findIndex(seg => seg.from === b.turn)
+    if (idx < 0) continue
+    out.push((idx / segments.length) * 100)
+  }
+  return out
+}

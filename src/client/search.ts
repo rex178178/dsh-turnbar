@@ -85,6 +85,8 @@ function renderResults(matches: SearchMatch[]): void {
   state.results = matches
   state.activeIndex = 0
   list.replaceChildren()
+  // v0.3 搜索落图：命中轮广播给 TurnBar，在全景条对应段上画 tick。
+  emitHits(matches.map(m => m.turn))
   if (matches.length === 0) {
     const empty = document.createElement('div')
     empty.className = 'tb-search-empty'
@@ -155,6 +157,7 @@ export function closeSearchPanel(): void {
   }
   state.el?.classList.remove('visible')
   state.onPick = null
+  emitHits([])
   // 焦点归还：避免 ⌘↑/⌘↓ 与 toast Esc 被隐藏输入框的 editable 判定吞掉。
   const target = state.restoreFocus
   state.restoreFocus = null
@@ -168,6 +171,14 @@ export function closeSearchPanel(): void {
 function onInput(): void {
   if (state.debounce !== null) window.clearTimeout(state.debounce)
   state.debounce = window.setTimeout(() => { state.debounce = null; void runSearch() }, 150)
+}
+
+/** 命中轮广播（v0.3 搜索落图）：TurnBar 监听后把命中段标 .hit。 */
+const HITS_EVENT = 'dsh-turnbar:hits'
+function emitHits(turns: readonly number[]): void {
+  try {
+    window.dispatchEvent(new CustomEvent(HITS_EVENT, { detail: turns }))
+  } catch { /* 事件派发失败不影响搜索本身 */ }
 }
 
 function onKey(event: KeyboardEvent): void {
