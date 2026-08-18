@@ -9,3 +9,4 @@ vendor/
 
 # 探索性截图
 .usertest/*.png
+*.tgz
