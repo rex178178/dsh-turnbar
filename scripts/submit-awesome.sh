@@ -12,7 +12,8 @@ FORK_OWNER="${FORK_OWNER:-rex178178}"
 echo "[$(date -u +%FT%TZ)] start (fork owner: $FORK_OWNER)" >> "$LOG"
 
 FORK_DIR=/tmp/awesome-dsh-plugin-fork
-YML=/Users/rexli/DSH-pulgin/docs/awesome-submission/rex178178__dsh-turnbar.yml
+# YAML 与脚本同仓：按脚本自身位置解析，任何机器克隆后都能直接跑
+YML="$(cd "$(dirname "$0")/.." && pwd)/docs/awesome-submission/rex178178__dsh-turnbar.yml"
 
 # macOS/BSD 与 GNU date 兼容的"满 1 天"时间戳
 if date -u -d '2026-08-17T06:11:25Z' +%s >/dev/null 2>&1; then
