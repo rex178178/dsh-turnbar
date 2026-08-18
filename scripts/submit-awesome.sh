@@ -1,11 +1,15 @@
 #!/bin/bash
 # 自动上架 awesome-dsh-plugin（= dshmarket 目录源）：
-# 1. 每 15 分钟重试 fork（GitHub 风控 403 解除后成功）
+# 1. 每 15 分钟重试 fork（GitHub 风控 403 解除后成功；可交给朋友账号代跑）
 # 2. fork 成功后 clone 到临时目录，复制提交文件
 # 3. 等 dsh-turnbar 仓库满 1 天（2026-08-17T06:11:25Z）后运行生成脚本并提 PR
+#
+# 用当前 gh 登录账号提交（默认为本机账号；朋友代跑时设置 FORK_OWNER=朋友账号）：
+#   FORK_OWNER=friendaccount bash scripts/submit-awesome.sh
 set -u
 LOG=/tmp/awesome-submit.log
-echo "[$(date -u +%FT%TZ)] start" >> "$LOG"
+FORK_OWNER="${FORK_OWNER:-rex178178}"
+echo "[$(date -u +%FT%TZ)] start (fork owner: $FORK_OWNER)" >> "$LOG"
 
 FORK_DIR=/tmp/awesome-dsh-plugin-fork
 YML=/Users/rexli/DSH-pulgin/docs/awesome-submission/rex178178__dsh-turnbar.yml
@@ -19,7 +23,7 @@ fi
 
 # ── 阶段 1：重试 fork（风控 403 会持续几小时到一天） ──
 FORKED=0
-if gh repo view rex178178/awesome-dsh-plugin >/dev/null 2>&1; then
+if gh repo view "$FORK_OWNER/awesome-dsh-plugin" >/dev/null 2>&1; then
   FORKED=1
   echo "[$(date -u +%FT%TZ)] fork already exists" >> "$LOG"
 else
@@ -40,8 +44,8 @@ fi
 
 # ── 阶段 2：clone fork ──
 rm -rf "$FORK_DIR"
-if ! git clone --depth 1 git@github.com:rex178178/awesome-dsh-plugin.git "$FORK_DIR" >> "$LOG" 2>&1; then
-  git clone --depth 1 https://github.com/rex178178/awesome-dsh-plugin.git "$FORK_DIR" >> "$LOG" 2>&1
+if ! git clone --depth 1 "git@github.com:${FORK_OWNER}/awesome-dsh-plugin.git" "$FORK_DIR" >> "$LOG" 2>&1; then
+  git clone --depth 1 "https://github.com/${FORK_OWNER}/awesome-dsh-plugin.git" "$FORK_DIR" >> "$LOG" 2>&1
 fi
 echo "[$(date -u +%FT%TZ)] fork cloned" >> "$LOG"
 
@@ -63,11 +67,11 @@ pnpm install --no-frozen-lockfile >> "$LOG" 2>&1 || npm install >> "$LOG" 2>&1
 node scripts/generate-readme.mjs >> "$LOG" 2>&1 || true
 git checkout -b add-dsh-turnbar >> "$LOG" 2>&1 || git checkout add-dsh-turnbar >> "$LOG" 2>&1
 git add -A
-git -c user.name=rex178178 -c user.email=rex178178@users.noreply.github.com \
+git -c user.name="$FORK_OWNER" -c user.email="$FORK_OWNER@users.noreply.github.com" \
   commit -m "Add dsh-turnbar — video-style turn navigation (progress bar, scrub, fuel gauge, chapters, trajectory jump)" >> "$LOG" 2>&1
 git push -u origin add-dsh-turnbar >> "$LOG" 2>&1
 gh pr create --repo awesome-dsh-plugin/awesome-dsh-plugin \
-  --head rex178178:add-dsh-turnbar --base main \
+  --head "$FORK_OWNER:add-dsh-turnbar" --base main \
   --title "Add dsh-turnbar — video-style turn navigation" \
   --body "Adds [rex178178/dsh-turnbar](https://github.com/rex178178/dsh-turnbar) (npm: dsh-turnbar, v0.3.0).
 
