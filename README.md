@@ -11,6 +11,8 @@ preview any turn, drag to scrub, click to jump, `Esc` to come back.
 
 ![hover preview](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-hover.png)
 
+![scrub, hover cards, and ⌘K search landing on the bar](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-scrub.gif)
+
 ## Install
 
 Three ways, pick one:

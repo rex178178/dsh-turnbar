@@ -58,18 +58,20 @@ cd "$FORK_DIR" || exit 1
 git checkout main >> "$LOG" 2>&1 || git checkout -b main >> "$LOG" 2>&1
 git pull --rebase origin main >> "$LOG" 2>&1 || true
 cp "$YML" "data/plugins/rex178178__dsh-turnbar.yml"
+# 生成脚本依赖 js-yaml/marked：fork 克隆无 node_modules，先装
+pnpm install --no-frozen-lockfile >> "$LOG" 2>&1 || npm install >> "$LOG" 2>&1
 node scripts/generate-readme.mjs >> "$LOG" 2>&1 || true
 git checkout -b add-dsh-turnbar >> "$LOG" 2>&1 || git checkout add-dsh-turnbar >> "$LOG" 2>&1
 git add -A
 git -c user.name=rex178178 -c user.email=rex178178@users.noreply.github.com \
-  commit -m "Add dsh-turnbar — video-style turn navigation (progress bar, hover cards, scrub, search)" >> "$LOG" 2>&1
+  commit -m "Add dsh-turnbar — video-style turn navigation (progress bar, scrub, fuel gauge, chapters, trajectory jump)" >> "$LOG" 2>&1
 git push -u origin add-dsh-turnbar >> "$LOG" 2>&1
 gh pr create --repo awesome-dsh-plugin/awesome-dsh-plugin \
   --head rex178178:add-dsh-turnbar --base main \
   --title "Add dsh-turnbar — video-style turn navigation" \
-  --body "Adds [rex178178/dsh-turnbar](https://github.com/rex178178/dsh-turnbar) (npm: dsh-turnbar).
+  --body "Adds [rex178178/dsh-turnbar](https://github.com/rex178178/dsh-turnbar) (npm: dsh-turnbar, v0.3.0).
 
-Full-map progress bar with hover preview cards (tools/files/tokens), drag scrub, ⌘K in-conversation search, ⌘↑/⌘↓ stepping, Esc-return. Dual-half plugin on the official conversation.composer.dock slot, no patches. Tested on dsh 0.1.0-rc.5/rc.6.
+Video-style in-session turn navigation: full-map progress bar, hover preview cards (tools/files/tokens), drag scrub, ⌘K search that lands on the bar, context-window fuel gauge, /goal chapter ticks, ⌘/Alt+click Trajectory-view jump, ⌘↑/⌘↓ stepping, Esc-return. Dual-half plugin on the official conversation.composer.dock slot, no patches. Tested on dsh 0.1.0-rc.5/6/7.
 
 Entry: \`data/plugins/rex178178__dsh-turnbar.yml\` + regenerated READMEs." >> "$LOG" 2>&1
 echo "[$(date -u +%FT%TZ)] PR created" >> "$LOG"
