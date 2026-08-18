@@ -1,8 +1,8 @@
 // v0.3.0 真机验收：章节刻度 / 悬停余量卡+提示行 / 搜索落图 / 轨迹联动 / 首跳教学 toast。
-// 前提：8791 实例已起（cwd=/Users/rexli/DSH-pulgin，插件 link 安装）。
+// 前提：目标实例已起（默认 8791，可用 TB_PORT/TB_CDP 覆盖）。
 // 用热 profile（复用 cdp-v023 的 user-data-dir：Web UI 记住的最后一个会话即复现会话「继续」）。
 import { spawn } from 'node:child_process'
-const PORT = 8791, CDP = 9346
+const PORT = Number(process.env.TB_PORT ?? 8791), CDP = Number(process.env.TB_CDP ?? 9346)
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', `--remote-debugging-port=${CDP}`, '--user-data-dir=/tmp/tbcdp-v023',
   '--no-first-run', '--no-default-browser-check', 'about:blank',

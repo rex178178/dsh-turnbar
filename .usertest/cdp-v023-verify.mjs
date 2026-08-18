@@ -1,7 +1,7 @@
 // v0.2.3 验收：首末轮跳转 / goal 轮首句 / flash 可视性 / scrub 高亮对位。
-// 前提：8791 实例已起（cwd=/Users/rexli/DSH-pulgin，插件 link 安装），真实会话「继续」（18 轮）。
+// 前提：目标实例已起（默认 8791，可用 TB_PORT 覆盖），真实会话「继续」（18 轮）。
 import { spawn } from 'node:child_process'
-const PORT = 8791, CDP = 9346
+const PORT = Number(process.env.TB_PORT ?? 8791), CDP = Number(process.env.TB_CDP ?? 9346)
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', `--remote-debugging-port=${CDP}`, '--user-data-dir=/tmp/tbcdp-v023',
   '--no-first-run', '--no-default-browser-check', 'about:blank',
@@ -56,6 +56,10 @@ try {
   ws = new WebSocket(targets.find(t => t.type === 'page').webSocketDebuggerUrl)
   await new Promise(r => ws.onopen = r)
   await cdp('Page.enable'); await cdp('Runtime.enable')
+  await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+  await sleep(6000)
+  // 强制打开复现会话（v0.3 起：避免干净 profile 打开新会话导致 0 轮无条）。
+  await evalJs(`localStorage.setItem('dsh.sessions.current', ${JSON.stringify(JSON.stringify({ sessionId: 'session-31ed62b0-7d87-435f-95c9-6f9b6e9896a9' }))})`)
   await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
   await sleep(8000)
 
