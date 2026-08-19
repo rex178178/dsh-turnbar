@@ -3,6 +3,24 @@
 All notable changes to **dsh-turnbar** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions respect semver.
 
+## [0.3.1] — 2026-08-19
+
+### Fixed（生产事故，同日修复）
+
+- **历史轮次从进度条"消失"、悬停全变「该轮已终止，无对话内容」**——根因是两层
+  同源（resume/fork 不重放 firehose，进程重启后 live fold 只收新事件）：
+  1. `stateOf` 原"live 非空即返回"会让**半截/空的 live 状态遮蔽完整 sidecar**；
+  2. `TurnStore.save()` 直接以半截 fold 覆盖写盘，**把既有完整历史 sidecar 冲掉**
+     （生产实测：11 轮历史被冲成 3 轮）。
+- 修复：
+  - 新增 `src/core/merge.ts`（纯函数）：sidecar（历史）+ live（新轮）按轮号合并，
+    同轮号以 live 最新为准，章节断点按 seq 去重，会话级字段 live 优先回落；
+  - `stateOf` 只在"真正带轮次"时才信任合并结果，空 live 继续走持久化回填；
+  - `save()` 落盘前与既有 sidecar 合并（历史永不丢）。
+- 生产恢复：受影响会话删除损坏 sidecar 后由 dsh 会话日志**回填出完整的 21 轮**
+  （含此前被半截 fold 掩盖的轮次），浏览器复验 21 段、无幽灵轮、悬停正常。
+- 测试：66→84 之外新增 merge 6 场景 + save 合并 1 场景（**91 全绿**）。
+
 ## [0.3.0] — 2026-08-18
 
 ### Added

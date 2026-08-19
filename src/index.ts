@@ -8,10 +8,11 @@
  * 待激活（cordis 语义）而非崩溃——正是我们要的优雅降级。
  */
 import { TurnStore } from './core/turn-store'
+import { mergeNavStates } from './core/merge'
 import type { SessionEventLike, SessionNavState } from './core/types'
 
 export const name = 'dsh-turnbar'
-export const version = '0.3.0'
+export const version = '0.3.1'
 export const inject: string[] = ['webServer', 'sessionPersistence']
 export const Config = undefined
 
@@ -76,10 +77,16 @@ export function apply(ctx: unknown): (() => void) | undefined {
   }
   const stateOf = async (sessionId: string): Promise<SessionNavState | null> => {
     if (sessionId === '') return null
-    const live = stores.get(sessionId)?.state
-    if (live !== null && live !== undefined) return live
-    const sidecar = TurnStore.load(sessionId)
-    if (sidecar !== null) return sidecar
+    const live = stores.get(sessionId)?.state ?? null
+    const sidecar = TurnStore.load(sessionId) ?? null
+    // v0.3.1：合并 sidecar(历史) 与 live(新事件)——resume 不重放 firehose，进程重启后
+    // live 只含新轮；原"live 非空即返回"会让完整历史被半截/空 live 遮蔽（悬停全变
+    // 「该轮已终止，无对话内容」、历史轮次从条上消失、sidecar 还会被半截 fold 冲掉）。
+    // 判定：只有 sidecar 或 live 其一真正带轮次时，合并结果才可信；若仅有一个空 live
+    // （重启后新会话/半截 store），继续走持久化回填换回完整数据。
+    const liveHasTurns = (live?.turns.length ?? 0) > 0
+    const merged = mergeNavStates(sidecar, live)
+    if (merged !== null && (sidecar !== null || liveHasTurns)) return merged
     const inspection = await c.sessionPersistence?.inspect?.(sessionId).catch(() => undefined)
     if (Array.isArray(inspection?.events) && inspection.events.length > 0) {
       return backfillFrom(sessionId, inspection.events)

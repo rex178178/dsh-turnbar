@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { SessionFold } from './fold'
+import { mergeNavStates } from './merge'
 import type { SessionEventLike, SessionNavState } from './types'
 
 export function dshHome(): string {
@@ -58,7 +59,12 @@ export class TurnStore {
 
   save(): void {
     if (!this.persistEnabled) return
-    const line = `${JSON.stringify({ type: 'turnbar/state', v: 1, state: this.state })}\n`
+    // v0.3.1：进程重启后 firehose 不重放历史，fold 只含新事件——直接以 this.state
+    // 覆盖写盘会把既有完整历史 sidecar 冲掉（生产 22:16 后 11 轮被冲成 3 轮的教训）。
+    // 写前与既有 sidecar 按轮号合并：历史永久保留，同轮号以最新（live）为准。
+    const prior = TurnStore.load(this.opts.sessionId, this.root)
+    const next = mergeNavStates(prior, this.state) ?? this.state
+    const line = `${JSON.stringify({ type: 'turnbar/state', v: 1, state: next })}\n`
     mkdirSync(this.root, { recursive: true })
     const tmp = `${this.sidecarPath}.tmp`
     writeFileSync(tmp, line, 'utf8')

@@ -57,4 +57,22 @@ describe('TurnStore sidecar round-trip', () => {
     const root = newRoot()
     expect(TurnStore.load('session-missing', root)).toBeNull()
   })
+
+  it('v0.3.1: save() merges with prior sidecar (重启后新 fold 不冲掉历史)', () => {
+    const root = newRoot()
+    const store = new TurnStore({ sessionId: 'session-merge', root })
+    store.ingest(ev('turn/start', { turn: 1 }, 1))
+    store.ingest(ev('user/message', { content: '历史问题', source: { kind: 'user' } }, 2))
+    store.ingest(ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '历史回复' }] } }, 3))
+    store.ingest(ev('turn/end', { turn: 1, reason: 'done' }, 4))
+    // 模拟重启：新 store 同 root、只收到新事件（turn 19 起）→ 保存不得冲掉 turn 1
+    const restarted = new TurnStore({ sessionId: 'session-merge', root })
+    restarted.ingest(ev('turn/start', { turn: 19 }, 5))
+    restarted.ingest(ev('user/message', { content: '新问题', source: { kind: 'user' } }, 6))
+    restarted.ingest(ev('turn/end', { turn: 19, reason: 'done' }, 7))
+    const loaded = TurnStore.load('session-merge', root)
+    expect(loaded?.turns.map(t => t.index)).toEqual([1, 19])
+    expect(loaded?.turns[0]?.userFirstLine).toBe('历史问题')
+    expect(loaded?.turns[1]?.userFirstLine).toBe('新问题')
+  })
 })
