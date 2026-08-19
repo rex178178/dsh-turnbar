@@ -75,39 +75,56 @@ export function apply(ctx: unknown): (() => void) | undefined {
     stores.set(sessionId, backfill) // 缓存：state 与 search 共享一次回填
     return backfill.state
   }
+  // 从持久化层整体回填（inspect 结构校验 → readRaw 裸读兜底）；成功时把完整 store
+  // 缓存为 live。防重问：成功后才记 seeded（失败不封——冷启动/大日志半读不锁死整进程）。
+  const seeded = new Set<string>()
+  const backfillFromPersistence = async (sessionId: string): Promise<SessionNavState | null> => {
+    if (seeded.has(sessionId)) return null
+    const result = await (async (): Promise<SessionNavState | null> => {
+      const inspection = await c.sessionPersistence?.inspect?.(sessionId).catch(() => undefined)
+      if (Array.isArray(inspection?.events) && inspection.events.length > 0) {
+        // 大/仍在写入的会话日志，inspect 可能给出半读（折叠出 0 轮）——先纯折叠探活：
+        // 0 轮则弃用（不缓存半读当完整），落 readRaw 更稳。
+        const probe = new TurnStore({ sessionId, persist: false })
+        for (const event of inspection.events) probe.ingestQuiet(event as SessionEventLike)
+        if (probe.state.turns.length > 0) return backfillFrom(sessionId, inspection.events)
+      }
+      // inspect 失败/为空/半读（rc.7 严格校验：corrupt log / torn record / seq gap）→ 裸读。
+      try {
+        const raw = await c.sessionPersistence?.readRaw?.(sessionId).catch(() => undefined)
+        const text = (raw as { content?: unknown } | undefined)?.content
+        if (typeof text === 'string') {
+          const recovered: unknown[] = []
+          for (const line of text.split('\n')) {
+            if (line.trim() === '') continue
+            try {
+              const parsed = JSON.parse(line) as unknown
+              if (parsed !== null && typeof parsed === 'object') recovered.push(parsed)
+            } catch { /* 半截/损坏行跳过——恢复已提交前缀 */ }
+          }
+          if (recovered.length > 0) return backfillFrom(sessionId, recovered)
+        }
+      } catch { /* 裸读兜底失败：维持 404 降级 */ }
+      return null
+    })()
+    if (result !== null) seeded.add(sessionId)
+    return result
+  }
+  // 完整性优先的会话状态装配（v0.3.1，防"半截 live 冒充完整"）：
+  // 1) sidecar 在 → 历史有保障 → 合并 sidecar+live 直接返回（历史+新轮）；
+  // 2) sidecar 缺失但 live 已有轮次（重启后只收到新轮的半截态）→ 先向持久化要完整版，
+  //    拿得到（并缓存为 live）用完整版，持久化也没有才退回 live；
+  // 3) 两边都空 → 交给持久化（含 readRaw 兜底），拿不到 → null → 404。
   const stateOf = async (sessionId: string): Promise<SessionNavState | null> => {
     if (sessionId === '') return null
     const live = stores.get(sessionId)?.state ?? null
     const sidecar = TurnStore.load(sessionId) ?? null
-    // v0.3.1：合并 sidecar(历史) 与 live(新事件)——resume 不重放 firehose，进程重启后
-    // live 只含新轮；原"live 非空即返回"会让完整历史被半截/空 live 遮蔽（悬停全变
-    // 「该轮已终止，无对话内容」、历史轮次从条上消失、sidecar 还会被半截 fold 冲掉）。
-    // 判定：只有 sidecar 或 live 其一真正带轮次时，合并结果才可信；若仅有一个空 live
-    // （重启后新会话/半截 store），继续走持久化回填换回完整数据。
-    const liveHasTurns = (live?.turns.length ?? 0) > 0
-    const merged = mergeNavStates(sidecar, live)
-    if (merged !== null && (sidecar !== null || liveHasTurns)) return merged
-    const inspection = await c.sessionPersistence?.inspect?.(sessionId).catch(() => undefined)
-    if (Array.isArray(inspection?.events) && inspection.events.length > 0) {
-      return backfillFrom(sessionId, inspection.events)
+    if (sidecar !== null) return mergeNavStates(sidecar, live)
+    if ((live?.turns.length ?? 0) > 0) {
+      const backfilled = await backfillFromPersistence(sessionId)
+      return backfilled ?? live
     }
-    // inspect 失败/为空（rc.7 严格校验：corrupt log / torn record / seq gap）→ 裸读。
-    try {
-      const raw = await c.sessionPersistence?.readRaw?.(sessionId).catch(() => undefined)
-      const text = (raw as { content?: unknown } | undefined)?.content
-      if (typeof text === 'string') {
-        const recovered: unknown[] = []
-        for (const line of text.split('\n')) {
-          if (line.trim() === '') continue
-          try {
-            const parsed = JSON.parse(line) as unknown
-            if (parsed !== null && typeof parsed === 'object') recovered.push(parsed)
-          } catch { /* 半截/损坏行跳过——恢复已提交前缀 */ }
-        }
-        if (recovered.length > 0) return backfillFrom(sessionId, recovered)
-      }
-    } catch { /* 裸读兜底失败：维持 404 降级 */ }
-    return null
+    return backfillFromPersistence(sessionId)
   }
 
   // 同源数据路由：client 半区 fetch('/plugins/dsh-turnbar/state?sessionId=…')。

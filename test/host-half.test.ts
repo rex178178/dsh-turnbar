@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { apply } from '../src/index'
 import { TurnStore } from '../src/core/turn-store'
 import { dshHome } from '../src/core/turn-store'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 interface RecordedRoute {
@@ -215,5 +216,102 @@ describe('node half: firehose + state route', () => {
     await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-garbage' }, res as any)
     expect(res.statusCode).toBe(404)
     dispose?.()
+  })
+
+  it('integrity-first: no sidecar + partial live → serves full persistence history (v0.3.1)', async () => {
+    // 用临时 DSH_HOME 隔离，避免污染真实 sidecar 目录
+    const home = mkdtempSync(join(tmpdir(), 'tb-dsh-integrity-'))
+    const prev = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    try {
+      const routes = new Map<string, RecordedRoute>()
+      const ctx: any = {
+        on: (_e: string, h: unknown) => { ctx._h = h; return h },
+        off: () => {},
+        webServer: {
+          register(route: RecordedRoute) {
+            routes.set(route.path, route)
+            return () => routes.delete(route.path)
+          },
+        },
+        // 持久化 = dsh 会话日志，含至当前的全部事件（含"重启后新轮"）
+        sessionPersistence: {
+          inspect: async () => ({
+            events: [
+              ev('turn/start', { turn: 1 }, 1),
+              ev('user/message', { content: '历史第一问', source: { kind: 'user' } }, 2),
+              ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '历史回复' }] }, usage: { inputTokens: 1, outputTokens: 1 } }, 3),
+              ev('turn/end', { turn: 1, reason: 'done' }, 4),
+              ev('turn/start', { turn: 2 }, 5),
+              ev('user/message', { content: '历史第二问', source: { kind: 'user' } }, 6),
+              ev('turn/end', { turn: 2, reason: 'done' }, 7),
+              ev('turn/start', { turn: 19 }, 1000),
+              ev('user/message', { content: '新问题', source: { kind: 'user' } }, 1001),
+              ev('turn/end', { turn: 19, reason: 'done' }, 1002),
+            ],
+          }),
+        },
+      }
+      const dispose = apply(ctx)
+      // 模拟重启窗口：live 先收到"进行中的新轮 19"（只 start+user，未 end → 不触发 save，
+      // 无 sidecar）——正是"sidecar 缺失 + live 半截"的时刻。
+      ctx._h({ id: 'session-integrity' }, ev('turn/start', { turn: 19 }, 1000))
+      ctx._h({ id: 'session-integrity' }, ev('user/message', { content: '新问题', source: { kind: 'user' } }, 1001))
+      const res = new MockRes()
+      await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-integrity' }, res as any)
+      expect(res.statusCode).toBe(200)
+      const state = JSON.parse(res.body).state
+      // 完整性优先：半截 live 不得冒充完整——返回持久化的完整历史 1..2 + 进行中的 19
+      expect(state.turns.map((t: { index: number }) => t.index)).toEqual([1, 2, 19])
+      expect(state.turns[0].userFirstLine).toBe('历史第一问')
+      expect(state.turns[2].userFirstLine).toBe('新问题')
+      dispose?.()
+    } finally {
+      if (prev === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = prev
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('v0.3.1: inspect half-read that folds to 0 turns falls back to readRaw', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'tb-dsh-halfread-'))
+    const prev = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    try {
+      const routes = new Map<string, RecordedRoute>()
+      const ctx: any = {
+        on: (_e: string, h: unknown) => { ctx._h = h; return h },
+        off: () => {},
+        webServer: {
+          register(route: RecordedRoute) {
+            routes.set(route.path, route)
+            return () => routes.delete(route.path)
+          },
+        },
+        sessionPersistence: {
+          // 模拟大/仍在写入日志的半读：inspect 只给出无轮次的杂项事件
+          inspect: async () => ({ events: [ev('session', {}, 1), ev('chunk', { part: 1 }, 2)] }),
+          readRaw: async () => ({
+            content: [
+              JSON.stringify(ev('turn/start', { turn: 3 }, 10)),
+              JSON.stringify(ev('user/message', { content: '裸读兜底的内容', source: { kind: 'user' } }, 11)),
+              JSON.stringify(ev('turn/end', { turn: 3, reason: 'done' }, 12)),
+            ].join('\n'),
+          }),
+        },
+      }
+      const dispose = apply(ctx)
+      const res = new MockRes()
+      await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-halfread' }, res as any)
+      expect(res.statusCode).toBe(200)
+      const state = JSON.parse(res.body).state
+      expect(state.turns.map((t: { index: number }) => t.index)).toEqual([3])
+      expect(state.turns[0].userFirstLine).toBe('裸读兜底的内容')
+      dispose?.()
+    } finally {
+      if (prev === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = prev
+      rmSync(home, { recursive: true, force: true })
+    }
   })
 })
