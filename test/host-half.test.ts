@@ -314,4 +314,164 @@ describe('node half: firehose + state route', () => {
       rmSync(home, { recursive: true, force: true })
     }
   })
+
+  // ---- v0.3.2：dsh 0.1.5+ 句柄制新链（open→read→close）----
+
+  const handleCtx = (persistence: Record<string, unknown>) => {
+    const routes = new Map<string, RecordedRoute>()
+    const ctx: any = {
+      on: (_e: string, h: unknown) => { ctx._h = h; return h },
+      off: () => {},
+      webServer: {
+        register(route: RecordedRoute) {
+          routes.set(route.path, route)
+          return () => routes.delete(route.path)
+        },
+      },
+      sessionPersistence: persistence,
+    }
+    return { routes, ctx }
+  }
+
+  const handleEvents = (): unknown[] => [
+    ev('turn/start', { turn: 1 }, 1),
+    ev('user/message', { content: '句柄链回填的历史问题', source: { kind: 'user' } }, 2),
+    ev('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '历史回复' }] }, usage: { inputTokens: 1, outputTokens: 1 } }, 3),
+    ev('turn/end', { turn: 1, reason: 'done' }, 4),
+  ]
+
+  it('v0.3.2: handle chain open→read(0) backfills history and always closes the handle', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'tb-dsh-handle-'))
+    const prev = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    try {
+      let closed = 0
+      let openedAccess = ''
+      const { routes, ctx } = handleCtx({
+        open: async (id: string, access: string) => {
+          expect(id).toBe('session-handle')
+          openedAccess = access
+          return {
+            read: async () => ({ events: handleEvents() }),
+            close: async () => { closed++ },
+          }
+        },
+      })
+      const dispose = apply(ctx)
+      const res = new MockRes()
+      await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-handle' }, res as any)
+      expect(res.statusCode).toBe(200)
+      expect(openedAccess).toBe('read')
+      const state = JSON.parse(res.body).state
+      expect(state.turns).toHaveLength(1)
+      expect(state.turns[0]).toMatchObject({ index: 1, userFirstLine: '句柄链回填的历史问题' })
+      expect(closed).toBe(1)
+      dispose?.()
+    } finally {
+      if (prev === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = prev
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('v0.3.2: open NotFound falls through to the legacy inspect chain', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'tb-dsh-notfound-'))
+    const prev = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    try {
+      const { routes, ctx } = handleCtx({
+        open: async () => { throw new Error('SessionPersistenceNotFoundError') },
+        inspect: async () => ({ events: handleEvents() }),
+      })
+      const dispose = apply(ctx)
+      const res = new MockRes()
+      await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-notfound' }, res as any)
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body).state.turns[0].userFirstLine).toBe('句柄链回填的历史问题')
+      dispose?.()
+    } finally {
+      if (prev === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = prev
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('v0.3.2: read Corruption → 404, handle closed, and NOT seeded (next request retries)', async () => {
+    let closed = 0
+    let readAttempts = 0
+    const { routes, ctx } = handleCtx({
+      open: async () => ({
+        read: async () => {
+          readAttempts++
+          throw new Error('SessionPersistenceCorruptionError')
+        },
+        close: async () => { closed++ },
+      }),
+    })
+    const dispose = apply(ctx)
+    for (let i = 0; i < 2; i++) {
+      const res = new MockRes()
+      await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-corrupt' }, res as any)
+      expect(res.statusCode).toBe(404)
+    }
+    expect(readAttempts).toBe(2)
+    expect(closed).toBe(2)
+    dispose?.()
+  })
+
+  it('v0.3.2: handle read whose events fold to 0 turns is discarded (half-read defense) → 404', async () => {
+    let closed = 0
+    const { routes, ctx } = handleCtx({
+      open: async () => ({
+        read: async () => ({ events: [ev('session', {}, 1), ev('chunk', { part: 1 }, 2)] }),
+        close: async () => { closed++ },
+      }),
+    })
+    const dispose = apply(ctx)
+    const res = new MockRes()
+    await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-halfhandle' }, res as any)
+    expect(res.statusCode).toBe(404)
+    expect(closed).toBe(1)
+    dispose?.()
+  })
+
+  it('v0.3.2: close() throwing never affects the backfill result', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'tb-dsh-close-'))
+    const prev = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    try {
+      const { routes, ctx } = handleCtx({
+        open: async () => ({
+          read: async () => ({ events: handleEvents() }),
+          close: async () => { throw new Error('close exploded') },
+        }),
+      })
+      const dispose = apply(ctx)
+      const res = new MockRes()
+      await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-closethrow' }, res as any)
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body).state.turns).toHaveLength(1)
+      dispose?.()
+    } finally {
+      if (prev === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = prev
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('v0.3.2: handle read returning an empty array falls silently to the (absent) old chain → 404', async () => {
+    let closed = 0
+    const { routes, ctx } = handleCtx({
+      open: async () => ({
+        read: async () => ({ events: [] }),
+        close: async () => { closed++ },
+      }),
+    })
+    const dispose = apply(ctx)
+    const res = new MockRes()
+    await routes.get('/plugins/dsh-turnbar/state')!.handler({ url: '/x?sessionId=session-emptyhandle' }, res as any)
+    expect(res.statusCode).toBe(404)
+    expect(closed).toBe(1)
+    dispose?.()
+  })
 })

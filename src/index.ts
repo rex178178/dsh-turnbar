@@ -12,7 +12,7 @@ import { mergeNavStates } from './core/merge'
 import type { SessionEventLike, SessionNavState } from './core/types'
 
 export const name = 'dsh-turnbar'
-export const version = '0.3.1'
+export const version = '0.3.2'
 export const inject: string[] = ['webServer', 'sessionPersistence']
 export const Config = undefined
 
@@ -35,6 +35,12 @@ interface MinimalCtx {
     load?(id: string): Promise<{ events: unknown[] }>
     /** rc.7：裸读日志文本（{meta, filename, content}），不做逐行校验。 */
     readRaw?(id: string): Promise<{ content?: unknown } | undefined>
+    /** 0.1.5+：句柄制（先登记借阅证再翻阅）。read 缺省 length = 读到日志末尾（一次全量）；
+     *  close 幂等，成功/失败路径都必须还证；NotFound/Corruption/Unsupported 抛错。 */
+    open?(id: string, access: 'read' | 'write'): Promise<{
+      read(offset?: number, length?: number): Promise<{ events?: unknown } | undefined>
+      close(): Promise<void>
+    }>
   }
 }
 
@@ -75,19 +81,44 @@ export function apply(ctx: unknown): (() => void) | undefined {
     stores.set(sessionId, backfill) // 缓存：state 与 search 共享一次回填
     return backfill.state
   }
-  // 从持久化层整体回填（inspect 结构校验 → readRaw 裸读兜底）；成功时把完整 store
-  // 缓存为 live。防重问：成功后才记 seeded（失败不封——冷启动/大日志半读不锁死整进程）。
+  // 半读防御探活：纯折叠出轮次才算完整事件集（大/仍在写入的日志可能只给出折 0 轮的
+  // 半读，弃用——不缓存半读当完整）。新链（0.1.5+）与旧链（inspect）共用同一判定。
+  const probeTurnCount = (sessionId: string, events: unknown[]): number => {
+    const probe = new TurnStore({ sessionId, persist: false })
+    for (const event of events) probe.ingestQuiet(event as SessionEventLike)
+    return probe.state.turns.length
+  }
+  // 从持久化层整体回填；成功时把完整 store 缓存为 live。链序即兼容（同一 dsh 上新旧
+  // API 互斥存在）：
+  // ① 新链（dsh 0.1.5+ 句柄制）：open('read') → read(0) 全量 → close 还证（幂等，
+  //    成功/失败路径都必须调）。NotFound / Corruption / Unsupported 契约即 fail-closed
+  //    （绝不给坏数据），无 readRaw 可兜 → 落旧链（新版无旧链 → 维持 404）。
+  // ② 旧链（≤0.1.1-rc.x 原样保留）：inspect 结构校验（rc.7 对半截/seq 缺口日志抛错）
+  //    → readRaw 裸读（逐行解析丢坏行，恢复已提交前缀）。
+  // ③ 全部落空 → null → 404。防重问：成功后才记 seeded（失败不封——不锁死整进程）。
   const seeded = new Set<string>()
   const backfillFromPersistence = async (sessionId: string): Promise<SessionNavState | null> => {
     if (seeded.has(sessionId)) return null
     const result = await (async (): Promise<SessionNavState | null> => {
-      const inspection = await c.sessionPersistence?.inspect?.(sessionId).catch(() => undefined)
+      const sp = c.sessionPersistence
+      if (typeof sp?.open === 'function') {
+        try {
+          const handle = await sp.open(sessionId, 'read')
+          try {
+            const events: unknown = (await handle.read(0))?.events
+            if (Array.isArray(events) && events.length > 0) {
+              if (probeTurnCount(sessionId, events) > 0) return backfillFrom(sessionId, events)
+              // 静默 404 无法区分"接口没接通"与"事件格式漂移"——留一行排查入口。
+              console.warn('[dsh-turnbar] persistence probe folded 0 turns:', sessionId)
+            }
+          } finally {
+            try { await handle.close() } catch { /* 还证失败绝不影响数据结果 */ }
+          }
+        } catch { /* NotFound / Corruption / Unsupported → 落旧链 */ }
+      }
+      const inspection = await sp?.inspect?.(sessionId).catch(() => undefined)
       if (Array.isArray(inspection?.events) && inspection.events.length > 0) {
-        // 大/仍在写入的会话日志，inspect 可能给出半读（折叠出 0 轮）——先纯折叠探活：
-        // 0 轮则弃用（不缓存半读当完整），落 readRaw 更稳。
-        const probe = new TurnStore({ sessionId, persist: false })
-        for (const event of inspection.events) probe.ingestQuiet(event as SessionEventLike)
-        if (probe.state.turns.length > 0) return backfillFrom(sessionId, inspection.events)
+        if (probeTurnCount(sessionId, inspection.events) > 0) return backfillFrom(sessionId, inspection.events)
       }
       // inspect 失败/为空/半读（rc.7 严格校验：corrupt log / torn record / seq gap）→ 裸读。
       try {
