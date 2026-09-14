@@ -15,7 +15,7 @@ import { chapterTickPercents, isEmptyTurn, planSegments, shouldShowTurnbar, type
 import { buildCardModel, buildGroupCardModel, ensureCard, type CardHandle, type CardTurn } from './card'
 import { CONTEXT_CRIT, CONTEXT_WARN, latestOccupancy } from './context'
 import { jumpToTrajectory } from './trajectory'
-import { pickTurnAnchor, type FlowEntry } from './locate'
+import { pickTurnAnchor, pickGroupAnchor, groupTurnRows, type FlowEntry, type GroupRow } from './locate'
 import { disposeToast, initToast, showReturnToast } from './toast'
 import { disposeSearch, toggleSearch } from './search'
 
@@ -258,6 +258,17 @@ function isUserRow(el: Element): el is HTMLElement {
     && el.querySelector('[class*="bubble"]') !== null
 }
 
+/**
+ * 一行 flowItem 里的用户行候选（0.1.5 加固）：优先 hover-root 行（旧版 dsh 的
+ * 判据，行为不变）；0.1.5 聊天行已不渲染 data-time-hover-root（0 个）→
+ * flowItem 自身 kind=user 即用户行（flowItem 就是用户行的包裹层）。
+ */
+function userRowCandidates(item: Element): HTMLElement[] {
+  const rows = [...item.querySelectorAll<HTMLElement>('[data-time-hover-root]')].filter(isUserRow)
+  if (rows.length > 0) return rows
+  return item.getAttribute('data-chat-flow-kind') === 'user' ? [item as HTMLElement] : []
+}
+
 /** 流顶部是否还有「加载更早/加载中…」按钮（= 上方仍有或正在加载历史）。
  * 全量扫描 flow 内按钮并匹配任一状态文案——只取第一个按钮 + 单状态正则
  * 会在「加载中…」或顶部按钮被内容按钮顶替时误判（跨分页跳转竞态根因之一）。 */
@@ -312,9 +323,8 @@ function userRowOfTurn(turn: number): HTMLElement | null {
   const found: HTMLElement[] = []
   let item: Element | null = lowerItem
   while (item !== null && item !== prevItem) {
-    for (const row of item.querySelectorAll<HTMLElement>('[data-time-hover-root]')) {
-      if (isUserRow(row)) { found.push(row); break }
-    }
+    const first = userRowCandidates(item)[0]
+    if (first !== undefined) found.push(first)
     item = item.previousElementSibling
   }
   // found 按"从后向前"收集；最后一个 = 文档序第一条 = 触发消息。
@@ -338,7 +348,10 @@ function firstFlowItem(flow: HTMLElement): HTMLElement | null {
 function nthUserRow(n: number): HTMLElement | null {
   const flow = flowEl()
   if (flow === null) return null
-  const rows = [...flow.querySelectorAll<HTMLElement>('[data-time-hover-root]')].filter(isUserRow)
+  let rows = [...flow.querySelectorAll<HTMLElement>('[data-time-hover-root]')].filter(isUserRow)
+  // 0.1.5 回退：hover-root 已从聊天行移除 → kind=user 的 flowItem 即用户行
+  // （旧版 hover-root 行仍在，此分支不会触发，行为不变）。
+  if (rows.length === 0) rows = [...flow.querySelectorAll<HTMLElement>('[data-chat-flow-kind="user"]')]
   return rows[Math.max(0, Math.min(rows.length - 1, n))] ?? null
 }
 
@@ -424,6 +437,79 @@ function rowFromTurnIndex(
     if (top !== null) return top
   }
   return item
+}
+
+/**
+ * 一次扫描 flow 的 flowItem 并按轮分组（locateByGrouping / 分组闸门共用）。
+ * ⚠️ data-turn-tail 长在 flowItem 内部的轮尾元素上，不在 flowItem 本身
+ * （userRowOfTurn 用 closest 上溯对位同证）——必须向内查一次。
+ */
+function scanFlowGroups(): Map<number, FlowEntry[]> | null {
+  const flow = flowEl()
+  if (flow === null) return null
+  const items = [...flow.querySelectorAll<HTMLElement>('[data-chat-flow-key]')]
+  if (items.length === 0) return null
+  const rows: GroupRow[] = items.map(el => {
+    const tt = Number(el.querySelector('[data-turn-tail]')?.getAttribute('data-turn-tail') ?? NaN)
+    return {
+      key: el.getAttribute('data-chat-flow-key') ?? '',
+      kind: el.getAttribute('data-chat-flow-kind') ?? '',
+      tailTurn: Number.isFinite(tt) ? tt : null,
+    }
+  })
+  try { return groupTurnRows(rows) } catch { return null }
+}
+
+/**
+ * DOM 分组定位（0.1.5 适配）：权威索引 chat.locations.getTurn 在 0.1.5 已删
+ * （grep 0 命中），跳转链在此插入第二顺位——一次扫描 [data-chat-flow-key]
+ * 自己重建每轮行清单（解析/归属规则见 locate.groupTurnRows），锚选择用
+ * pickGroupAnchor。定位链变为：权威索引（rc.7 在 → 原路）→ DOM 分组（0.1.5
+ * 接管）→ 区间法（新法失手 → 旧行为兜底）。目标轮未渲染/解析不出 → null，
+ * 调用方照旧走翻页与区间兜底。
+ */
+function locateByGrouping(turn: number): HTMLElement | null {
+  const flow = flowEl()
+  if (flow === null) return null
+  const groups = scanFlowGroups()
+  if (groups === null) return null
+  const entries = groups.get(turn)
+  if (entries === undefined || entries.length === 0) return null
+  const picked = pickGroupAnchor(entries)
+  if (picked < 0) return null
+  const key = entries[picked]?.key ?? ''
+  if (key === '') return null
+  // 属性选择器引号内只需转义反斜杠与引号（同 rowFromTurnIndex；CSS.escape 不可用）
+  const sel = key.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  const item = flow.querySelector(`[data-chat-flow-key="${sel}"]`) as HTMLElement | null
+  if (item === null) return null
+  if (item.getAttribute('data-chat-flow-kind') === 'user') {
+    return (item.querySelector('[data-time-hover-root]') as HTMLElement | null) ?? item
+  }
+  // 第 1 轮的非 user 锚与 rowFromTurnIndex 同规：流顶注入行不在任何轮的组里
+  // 也不会成为锚，但跳 #1 仍应从会话最开头看起。
+  if (turn === 1) {
+    const top = firstFlowItem(flow)
+    if (top !== null) return top
+  }
+  return item
+}
+
+/**
+ * 分组闸门：目标轮的组「还在长」——user 行已落组但可解析锚行（process/step/
+ * tail）尚未渲染（React 分批提交窗口，翻完最后一页后也有 1-2 帧窗口）。
+ * 此窗口内区间法必有盲区：userRowOfTurn 会把「被掏空上一轮」的孤儿 user 当
+ * 触发消息（#11 真机实测错锚轮 10 的「我还Pro」而非轮 11 的「我换Pro」）——
+ * 权威索引在 rc.7 上瞬时命中掩盖过此竞态，0.1.5 无索引必须显式关门：真值时
+ * 调用方不得落区间兜底，返回 null 继续等待分组收敛。
+ */
+function groupPendingFor(turn: number): boolean {
+  const groups = scanFlowGroups()
+  if (groups === null) return false
+  const entries = groups.get(turn)
+  if (entries === undefined || entries.length === 0) return false
+  const hasUser = entries.some(en => en?.kind === 'user')
+  return hasUser && pickGroupAnchor(entries) < 0
 }
 
 /** navbar 验证过的跳转配方：wheel 事件兜底旧基线 + 一步写入 scrollTop。
@@ -961,17 +1047,25 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
       const targetTurn = segment.turns[0]?.index ?? 1
       const scroller = scrollerOf(flowEl())
       const prevTop = scroller?.scrollTop ?? 0
-      // 权威索引优先（chat.locations.getTurn → rowFromTurnIndex）：区间法对
-      // 「前一轮 aborted 无轮尾」（点 #11 错落 turn 10）和「goal 轮无用户行」
-      // （点 #3 错落 tool 行）有盲区；索引未命中（旧版 dsh / 目标轮未加载）
-      // 落回区间法。
+      // 定位链三级：权威索引（rc.7 的 chat.locations.getTurn）→ DOM 分组
+      // （0.1.5 索引已删，从 flow key 的类型段尾数字重建每轮行清单）→ 区间法。
+      // 区间法对「前一轮 aborted 无轮尾」（点 #11 错落 turn 10）和「goal 轮
+      // 无用户行」（点 #3 错落 tool 行）有盲区；分组法不依赖轮尾存在与
+      // hover-root 标记，两盲区由索引或分组消解。
+      // ⚠️ 分组闸门（groupPendingFor）：目标轮 user 行已落组、锚行未渲染的
+      // 提交窗口内，区间法必错锚漏入行——此刻必须返回 null 继续等，宁可慢
+      // 不可错（#11 真机竞态实证）。
       // 翻页终止条件 = 目标行真正出现；上限 400 页只是防呆（长会话翻页可能
       // 50+ 页，v0.2 的 40 页上限会让长会话点第一段落不到第一轮）。
       // 竞态防护：hasMore 翻 false 不代表渲染完成——「加载中…」按钮还在时
       // 继续等待；按钮消失后仍可能处于 React 局部提交（轮尾未渲染），
       // 再等两帧复检，避免把局部提交当最终状态。
-      const locateRow = (): HTMLElement | null =>
-        rowFromTurnIndex(locationsRef.current, targetTurn) ?? userRowOfTurn(targetTurn)
+      const locateRow = (): HTMLElement | null => {
+        const precise = rowFromTurnIndex(locationsRef.current, targetTurn) ?? locateByGrouping(targetTurn)
+        if (precise !== null) return precise
+        if (groupPendingFor(targetTurn)) return null
+        return userRowOfTurn(targetTurn)
+      }
       let row = locateRow()
       for (let i = 0; row === null && i < 400; i++) {
         const flow = flowEl()
@@ -987,8 +1081,9 @@ const TurnBar = function TurnBar(props: TurnBarProps | undefined): any {
             row = locateRow()
             if (row !== null) break
             // 锚点只在区间边界齐备时接受：有用户行的轮优先等精确定位结果，
-            // 否则会落在轮尾（曾稳定锚 tail-3）。
-            if (intervalBounded(targetTurn)) {
+            // 否则会落在轮尾（曾稳定锚 tail-3）。分组闸门同样适用——user 行
+            // 已落组、锚行未渲染的窗口内 turnAnchorRow 会锚到上一轮的行。
+            if (intervalBounded(targetTurn) && !groupPendingFor(targetTurn)) {
               const anchor = turnAnchorRow(targetTurn)
               if (anchor !== null) { row = anchor; break }
             }
