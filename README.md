@@ -119,10 +119,13 @@ Built on paths others paved first — with gratitude:
 
 ## Compatibility
 
-Tested against dsh `0.1.0-rc.7` (web profile), also smoke-tested on `rc.5`/`rc.6`.
-Works with the official web UI's `conversation.composer.dock` slot; no patches,
-no UI hacks — which is the point: **upgrading dsh does not require uninstalling
-dsh-turnbar first.** The one plugin that does require that dance is
+Tested against dsh `0.1.5-rc.1` (web profile, handle-based persistence
+`open/read/close`) and `0.1.0-rc.7` (one-step `inspect`/`readRaw` persistence).
+Both persistence generations are auto-detected at runtime, so history backfill
+works on either. Works with the official web UI's `conversation.composer.dock`
+slot; no patches, no UI hacks — which is the point: **upgrading dsh does not
+require uninstalling dsh-turnbar first.** The one plugin that does require that
+dance is
 [dsh-codex-timeline](https://github.com/Wine-Red/dsh-codex-timeline): it pins an
 exact dsh commit by replacing the official conversation adapter, so the upgrade
 checklist says "uninstall before upgrading". Different trade-off, stated plainly.
@@ -137,7 +140,8 @@ progress bar too (only brand-new 0-turn sessions stay hidden).
 
 | dsh version | status |
 |---|---|
-| ≥ 0.1.0-rc.5 (web) | ✅ full features |
+| 0.1.5+ (web, handle-based persistence) | ✅ full features |
+| 0.1.0-rc.5 – 0.1.1-rc.x (web, inspect/readRaw) | ✅ full features (legacy chain) |
 | older / non-web profiles | plugin stays inert; nothing breaks |
 
 ## Roadmap

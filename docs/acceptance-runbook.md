@@ -76,3 +76,51 @@ v0.3.1 已含以上全部代码修复 + 4 条对应单测（93 全绿）+ 生产
 
 生产 profile（web）当前 turnbar 还是 0.2.2——本方案验收通过后，生产更新为一条命令：
 `dsh plugin --profile web update dsh-turnbar`（或 add 0.3.0），发布风险归零。
+
+## 2026-09-13 v0.3.2 验收记录（dsh 0.1.5-rc.1 环境）
+
+| Gate | 结果 |
+|---|---|
+| G0 单测/tsc/build | **99/99 · 0 错误 · build OK**（新增 6 个句柄链用例） |
+| G1 数据面（清 sidecar 防假绿后） | state 200 · 7 轮，数据只能来自新句柄链 ✓ |
+| G2 回归 8 项 | **6/8**（A/F11 挂——见下"0.1.5 UI 移除"） |
+| G3 v0.3 专项 10 项 | **10/10 PASS** |
+| G4 重启断链 | **PASS**（18 段保住/悬停真实内容/首轮 index=1） |
+| G5 镜像（tarball 0.3.2） | v023 6/8 · v03 10/10 · 冲突 **7/9**（见下） |
+| F5 dup-splice 数据手术 | 31ed62b0 剔 1 条被拒 splice → **双复验双门过**（应用打开无报错+97 行渲染+18 段；state 200） |
+
+**0.1.5 两处 UI 移除（全部挂项的唯一根因，与 0.3.2 修复正交）**：
+1. `chat.locations.getTurn` 权威轮次索引被删 → 跳转落区间法盲区：轮次正确但锚在
+   工具行（A/F11/#11 冲突项）。修法属 client 半区（已拍板并入 0.3.2，见 PLAN-V032.md §10）。
+2. 聊天行不再渲染 `data-time-hover-root` → 冲突套件的"navbar 存活"计数断言失效
+   （计数对象是 dsh 聊天行标记，0 个）。
+
+### 同日 §10 B 路线（跳转锚定 DOM 分组）实施后复验——全绿
+
+| Gate | 结果 |
+|---|---|
+| G0 单测/tsc/build | **117/117 · 0 错误 · build OK**（新增 18 个分组/锚选择用例） |
+| G2 回归 8 项（8791 link） | **8/8 PASS**（A/F11 转绿：A 落 user 行 205ms、F11 落"我换Pro模型推进吧"） |
+| G3 v0.3 专项 10 项 | **10/10 PASS** |
+| G4 重启断链 | **PASS**（18 段保住/悬停真实内容/首轮 index=1） |
+| G5 镜像（重打包 tarball 0.3.2 重装） | v023 **8/8** · v03 **10/10** · 冲突 **9/9 全 PASS** |
+
+**§10 实施追加的三条真机实证（8791，已消化进代码与用例）**：
+1. `data-turn-tail` 属性长在 flowItem **内部**的轮尾元素上（`userRowOfTurn` 的
+   closest 上溯同证），flowItem 本身没有——分组适配层必须 `querySelector` 向内查。
+2. aborted 轮（如轮 10）掏空到只剩 user 行 + 无属性轮尾壳：壳 key 形如
+   `9:turn-tail10` 但**不带轮号信息**。壳会被向后归属扫进下轮组、恰好卡在
+   漏入 user 与触发 user 中间——两个修正：归属的 prev 只跟随携带轮号的行；
+   `pickGroupAnchor` 对壳跳过不收网（否则 lastUser 停在漏入行，F11 锚"我还Pro"）。
+3. **分组闸门 `groupPendingFor`**：翻完最后一页后 React 分批提交有 1-2 帧窗口
+   （user 行先落组、process 锚行后到），窗口内区间法必错锚漏入行——权威索引在
+   rc.7 上瞬时命中掩盖过此竞态，0.1.5 无索引必须显式关门（真值时禁区间法答）。
+   另：冲突套件"navbar 存活"计数基已从 hover-root 切到 kind=user 聊天行（两代通用）。
+
+**镜像 profile 0.1.5 适配记录**：web-ui-all（含 0.3.6 latest）与 dshmarket 在
+0.1.5-rc.1 上**起不来**（`dsh-settings.settingsNamespace/installSettingsSection`
+与 `dsh-host-apiproxy` 被删）——第三方生态滞后，非 turnbar 问题。镜像现以
+navbar+aegis+usage-stats+turnbar 四家共存跑冲突套件。另：**0.1.5 web 服务新增
+`?token=` 鉴权**，验收脚本一律走 `TB_TOKEN`（token 见实例启动日志）。
+生产升级警告：若生产 profile 含 web-ui-all/dshmarket，重启到 0.1.5 后这两个插件
+将加载失败（先于 turnbar 存在的问题）。

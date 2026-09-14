@@ -3,6 +3,9 @@
 // 用热 profile（复用 cdp-v023 的 user-data-dir：Web UI 记住的最后一个会话即复现会话「继续」）。
 import { spawn } from 'node:child_process'
 const PORT = Number(process.env.TB_PORT ?? 8791), CDP = Number(process.env.TB_CDP ?? 9346)
+// 0.1.5 起 web 服务要求 ?token= 鉴权（token 见实例启动日志）；旧版留空即可。
+const TOKEN = process.env.TB_TOKEN ?? ''
+const BASE = `http://127.0.0.1:${PORT}/${TOKEN ? `?token=${TOKEN}` : ''}`
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', `--remote-debugging-port=${CDP}`, '--user-data-dir=/tmp/tbcdp-v023',
   '--no-first-run', '--no-default-browser-check', 'about:blank',
@@ -30,11 +33,11 @@ try {
   ws = new WebSocket(targets.find(t => t.type === 'page').webSocketDebuggerUrl)
   await new Promise(r => ws.onopen = r)
   await cdp('Page.enable'); await cdp('Runtime.enable')
-  await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+  await cdp('Page.navigate', { url: BASE })
   await sleep(6000)
   // 打开复现会话：Web UI 用 localStorage['dsh.sessions.current'] 记录当前会话。
   await evalJs(`localStorage.setItem('dsh.sessions.current', ${JSON.stringify(JSON.stringify({ sessionId: SID }))})`)
-  await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+  await cdp('Page.navigate', { url: BASE })
   await sleep(8000)
 
   // 0. 等进度条就绪（复现会话 18 轮）；冷/新会话 15s 内不出条则判失败

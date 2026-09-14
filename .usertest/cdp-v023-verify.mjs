@@ -2,6 +2,9 @@
 // 前提：目标实例已起（默认 8791，可用 TB_PORT 覆盖），真实会话「继续」（18 轮）。
 import { spawn } from 'node:child_process'
 const PORT = Number(process.env.TB_PORT ?? 8791), CDP = Number(process.env.TB_CDP ?? 9346)
+// 0.1.5 起 web 服务要求 ?token= 鉴权（token 见实例启动日志）；旧版留空即可。
+const TOKEN = process.env.TB_TOKEN ?? ''
+const BASE = `http://127.0.0.1:${PORT}/${TOKEN ? `?token=${TOKEN}` : ''}`
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', `--remote-debugging-port=${CDP}`, '--user-data-dir=/tmp/tbcdp-v023',
   '--no-first-run', '--no-default-browser-check', 'about:blank',
@@ -56,11 +59,11 @@ try {
   ws = new WebSocket(targets.find(t => t.type === 'page').webSocketDebuggerUrl)
   await new Promise(r => ws.onopen = r)
   await cdp('Page.enable'); await cdp('Runtime.enable')
-  await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+  await cdp('Page.navigate', { url: BASE })
   await sleep(6000)
   // 强制打开复现会话（v0.3 起：避免干净 profile 打开新会话导致 0 轮无条）。
   await evalJs(`localStorage.setItem('dsh.sessions.current', ${JSON.stringify(JSON.stringify({ sessionId: 'session-31ed62b0-7d87-435f-95c9-6f9b6e9896a9' }))})`)
-  await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+  await cdp('Page.navigate', { url: BASE })
   await sleep(8000)
 
   // 打开「继续」会话（18 轮）：搜索会话 → 输入过滤 → 点会话行
@@ -82,8 +85,22 @@ try {
     row.click(); return true
   })()`)
   if (!opened) {
-    console.log('session 「继续」 not found; spans:', JSON.stringify(await evalJs(`[...document.querySelectorAll('span')].map(s => (s.textContent||'').trim()).filter(t => t && t.length < 30).slice(0, 40)`)))
-    throw new Error('cannot open session 继续')
+    // v0.3.2：直达配方为主（上面已写 dsh.sessions.current 并刷新），侧栏搜索降级为
+    // 可选兜底——搜不到但目标会话确在开（current key 未被改写 + 会话流有内容）就继续；
+    // 新版 Web UI 侧栏改版不再拖垮验收。
+    const direct = await evalJs(`(() => {
+      const flow = document.querySelector('[data-chat-flow]')
+      return {
+        cur: localStorage.getItem('dsh.sessions.current') ?? '',
+        hasFlow: !!flow,
+        flowChildren: flow ? flow.children.length : 0,
+      }
+    })()`)
+    console.log('sidebar search missed; direct recipe state:', JSON.stringify(direct))
+    if (!(direct.cur.includes('31ed62b0') && direct.hasFlow && direct.flowChildren > 0)) {
+      console.log('session 「继续」 not found; spans:', JSON.stringify(await evalJs(`[...document.querySelectorAll('span')].map(s => (s.textContent||'').trim()).filter(t => t && t.length < 30).slice(0, 40)`)))
+      throw new Error('cannot open session 继续 (sidebar + direct recipe both failed)')
+    }
   }
   for (let i = 0; i < 30; i++) { await sleep(4000); const n = await evalJs(`document.querySelectorAll('[data-turnbar-seg]').length`); if (n >= 15) break }
   const out = {}

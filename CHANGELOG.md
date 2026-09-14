@@ -3,6 +3,46 @@
 All notable changes to **dsh-turnbar** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions respect semver.
 
+## [0.3.2] — 2026-09-13
+
+### Fixed（dsh 0.1.5 持久化接口换代适配）
+
+- **重启/冷启动后打开历史会话，进度条整体不渲染**——dsh `0.1.5-rc.1` 把会话
+  持久化读取从 `inspect`/`readRaw` 一步全量换成了句柄制（`open('read')` →
+  `handle.read(0)` → `handle.close()`，旧函数已删除）。插件回填链还在调旧
+  API，能力探测静默降级 → 0 轮 → 按设计规则（≥1 轮才显示）不渲染。
+- 修复：回填链最前面加**新句柄链**（能力探测 `open` 存在即走，`read(0)` 一次
+  全量，`close` 幂等且成功/失败路径都必调——失败路径也还证，防句柄累积）；
+  旧 `inspect` → `readRaw` 链**原样保留**给 ≤0.1.1-rc.x 用户。同一 dsh 上新旧
+  API 互斥存在，链序即兼容，双版本用户都不破。
+- 新后端契约 fail-closed（torn tail 永不给读者、坏日志抛
+  `SessionFormatUnsupportedError`/`SessionPersistenceCorruptionError` 绝不误读），
+  readRaw 兜底在新版无存在意义——NotFound/Corruption/Unsupported 一律降级 404。
+- 半读防御探活（先纯折叠出轮次才算数）抽为新旧链共用；新链探活折 0 轮时打
+  一行 `console.warn` 诊断（区分"接口没接通"与"事件格式漂移"）。
+- 测试：93→**99 全绿**（新增 6 个句柄链用例：成功+必还证 / NotFound 落旧链 /
+  Corruption→404+不记 seeded+还证 / 折 0 轮弃半读 / close 抛错不影响结果 /
+  空事件静默落旧链）。
+
+### Fixed（dsh 0.1.5 UI 适配：跳转锚定 DOM 分组定位）
+
+- **点进度条跳转落点错行**——0.1.5 删了权威轮次索引 `chat.locations.getTurn`
+  与聊天行的 `data-time-hover-root` 标记，跳转跌回区间法两个已知盲区：末轮
+  跳转错停工具行、#11 错落轮 10（前一轮 aborted 掏空）、⌘↑/搜索兜底全灭。
+- 修复（仅 client 半区，`src/client/locate.ts` + `index.ts`）：定位链改为
+  **权威索引（rc.7 原路）→ DOM 分组（0.1.5 接管）→ 区间法（兜底）**。
+  DOM 分组一次扫描 `[data-chat-flow-key]` 自己重建每轮行清单：
+  - 轮号解析只认**类型段尾随数字**（`12:turn-process14`→14），行首 `NN:` 是
+    槽位号不是轮号；turn-tail 只信 `data-turn-tail` 属性（且该属性长在
+    flowItem **内部**元素上，须向内查）；
+  - user/context 行向后归属、其余行向前归属；aborted 轮掏空后漏入下轮组的
+    孤儿 user 行，由「锚行前最后一个 user」+「分组还在长闸门」（user 落组、
+    锚行未渲染时区间法禁答）双保险消解——无属性轮尾壳不带轮号、不收网；
+  - 锚选择复用 `pickTurnAnchor` 的选锚智慧（`pickGroupAnchor` 分组特化）；
+  - 顺带加固：`userRowOfTurn`/`nthUserRow` 在 hover-root 全灭时回退
+    kind=user flowItem（旧版行为逐字节不变）。
+- 测试：99→**117 全绿**（新增 18 个分组/锚选择用例，含真机 #11 全同构）。
+
 ## [0.3.1] — 2026-08-19
 
 ### Fixed（生产事故，同日修复）

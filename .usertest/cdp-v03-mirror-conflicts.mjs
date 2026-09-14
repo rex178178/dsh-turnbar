@@ -5,6 +5,9 @@
 import { spawn } from 'node:child_process'
 const SID = 'session-31ed62b0-7d87-435f-95c9-6f9b6e9896a9'
 const PORT = Number(process.env.TB_PORT ?? 8794), CDP = Number(process.env.TB_CDP ?? 9352)
+// 0.1.5 起 web 服务要求 ?token= 鉴权（token 见实例启动日志）；旧版留空即可。
+const TOKEN = process.env.TB_TOKEN ?? ''
+const BASE = `http://127.0.0.1:${PORT}/${TOKEN ? `?token=${TOKEN}` : ''}`
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', `--remote-debugging-port=${CDP}`, `--user-data-dir=/tmp/tbcdp-mirror-${Date.now()}`,
   '--no-first-run', '--no-default-browser-check', 'about:blank',
@@ -50,10 +53,10 @@ try {
   ws = new WebSocket(targets.find(t => t.type === 'page').webSocketDebuggerUrl)
   await new Promise(r => ws.onopen = r)
   await cdp('Page.enable'); await cdp('Runtime.enable')
-  await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+  await cdp('Page.navigate', { url: BASE })
   await sleep(5000)
   await evalJs(`localStorage.setItem('dsh.sessions.current', ${JSON.stringify(JSON.stringify({ sessionId: SID }))}); 'ok'`)
-  await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+  await cdp('Page.navigate', { url: BASE })
   // 轮询等进度条就绪（全家桶加载 + 会话回填可能较慢）
   let segs = 0
   for (let i = 0; i < 25 && segs === 0; i++) {
@@ -66,14 +69,17 @@ try {
   const scene = JSON.parse(await evalJs(`JSON.stringify((() => {
     const bars = document.querySelectorAll('[data-turnbar]')
     const bar = bars[0] ?? null
+    // navbar 存活计数基（v0.3.2 适配 0.1.5）：旧版数 data-time-hover-root（dsh 聊天行标记），
+    // 0.1.5 起聊天行不再渲染该标记（0 个）→ 改数 kind=user 的聊天行（两代都在）。
     const navRoot = [...document.querySelectorAll('[data-time-hover-root]')].length
+      || [...document.querySelectorAll('[data-chat-flow-kind="user"]')].length
     const dock = document.querySelector('div[data-slot="conversation.composer.dock"]') || document.querySelector('[data-slot="conversation.composer.dock"]')
     const barW = bar ? bar.offsetWidth : -1
     const dockW = dock ? dock.offsetWidth : -1
     const fillRatio = dockW > 0 ? barW / dockW : 0
     return { barCount: bars.length, navRoot, dockW, barW, fillRatio }
   })())`))
-  check('navbar 同窗存活（DOM 锚点共用但不塌）', scene.navRoot > 0, `${scene.navRoot} 个时间悬停根`)
+  check('navbar 同窗存活（DOM 锚点共用但不塌）', scene.navRoot > 0, `${scene.navRoot} 个用户行/悬停根`)
   check('无重复注入：全页仅一条进度条', scene.barCount === 1, `${scene.barCount} 条`)
   check('dock 布局：条独占整行（占比 ≥95%）', scene.fillRatio >= 0.95, `barW/dockW=${scene.barW}/${scene.dockW}=${scene.fillRatio.toFixed(3)}`)
 
