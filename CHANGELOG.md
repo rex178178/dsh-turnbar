@@ -43,6 +43,12 @@ All notable changes to **dsh-turnbar** are documented here. Format follows
     kind=user flowItem（旧版行为逐字节不变）。
 - 测试：99→**117 全绿**（新增 18 个分组/锚选择用例，含真机 #11 全同构）。
 
+### Changed（owner 拍板：跳转不再高亮落点行）
+
+- 移除跳转后落点行的蓝色内描边 + 渐隐底色（`[data-turnbar-flash]` 的视觉
+  规则），跳转逻辑与落点规则零改动。属性仍作 2.5s **不可见锚点标记**，
+  自动验收脚本的落点断言（文本/几何/归属）不受影响。
+
 ## [0.3.1] — 2026-08-19
 
 ### Fixed（生产事故，同日修复）

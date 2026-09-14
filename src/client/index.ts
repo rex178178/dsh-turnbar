@@ -90,14 +90,9 @@ const CSS = `
   background: rgba(128, 128, 140, .18);
   color: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
 }
-/* 内描边 ring：画在行盒内部——outline 画在行外会被滚动容器上缘裁掉，
-   高行（粘贴/工具爆发）的外框也会超出视口被裁；inset 两种情况都不裁。 */
-[data-turnbar-flash] {
-  box-shadow: inset 0 0 0 2px var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4c9aff);
-  border-radius: 6px;
-  animation: turnbar-flash 2.5s ease-out forwards;
-}
-@keyframes turnbar-flash { 0% { background-color: rgba(76, 154, 255, .18) } 70% { background-color: rgba(76, 154, 255, .12) } 100% { background-color: transparent } }
+/* 跳转不再画高亮（owner 2026-09-14 拍板去掉，只保留跳转本身）：
+   [data-turnbar-flash] 属性仍在落点上挂 2.5s——纯不可见标记，专供自动
+   验收脚本断言"跳没跳对"（文本/几何/归属全读它），肉眼看是干净的。 */
 [data-turnbar-card] {
   position: fixed; z-index: 910; width: 320px; max-width: calc(100vw - 16px);
   box-sizing: border-box; padding: 10px 14px; border-radius: 12px;
@@ -193,7 +188,7 @@ const CSS = `
   color: var(--dsw-alias-label-tertiary, #888);
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-turnbar-seg], [data-turnbar-card], [data-turnbar-flash] { transition: none; animation: none; }
+  [data-turnbar-seg], [data-turnbar-card] { transition: none; animation: none; }
 }
 /* ── 共存层：TurnBar 在多插件 dock 中独占整行 ──
    包装层默认 display:contents（官方）；live-stats 等插件会把它改成 flex row。
@@ -526,6 +521,8 @@ function jumpToRow(row: HTMLElement): void {
   scroller.scrollTop = Math.max(0, target)
 }
 
+/** 跳转落点标记：不再有任何视觉（高亮已按 owner 要求去除），属性只作
+ * 2.5s 的不可见锚点标记——自动验收脚本靠它断言落点（文本/几何/归属）。 */
 function flashRow(row: HTMLElement): void {
   row.setAttribute('data-turnbar-flash', '')
   window.setTimeout(() => row.removeAttribute('data-turnbar-flash'), 2500)
