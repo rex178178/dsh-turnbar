@@ -1,8 +1,8 @@
 # dsh-turnbar
 
 [![npm version](https://img.shields.io/npm/v/dsh-turnbar)](https://www.npmjs.com/package/dsh-turnbar)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-turnbar)](https://www.npmjs.com/package/dsh-turnbar)
 [![license](https://img.shields.io/github/license/rex178178/dsh-turnbar)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/rex178178/dsh-turnbar)](https://github.com/rex178178/dsh-turnbar)
 
 **[English](README.md) | [简体中文](README.zh-CN.md)**
 
@@ -22,7 +22,7 @@ preview any turn, drag to scrub, click to jump, `Esc` to come back.
 Three ways, pick one:
 
 **① Plugin market (easiest)**: open [dshmarket](https://github.com/dsh-market/dsh-market)
-inside dsh, search "turnbar", one click (listing pending; until it lands, use the options below).
+inside dsh, search "turnbar", one click.
 
 **② Command line**: open your macOS Terminal app and paste:
 
@@ -79,6 +79,8 @@ and the bar always shows the **whole** conversation.
   exactly where you were.
 - 🧩 **Graceful degradation** — if your dsh version changes APIs, dsh-turnbar
   hides itself instead of breaking your session.
+
+![⌘K search — matching turns glow amber on the bar](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-search.png)
 
 ## Why yet another navigation plugin?
 
@@ -165,6 +167,11 @@ Architecture: a dual-half plugin — the node half folds the `session/event`
 firehose into per-turn records (persisted sidecar), serves them over
 `/plugins/dsh-turnbar/state`; the web half renders the bar into the official
 composer dock slot. All dsh API contact is confined to `src/platform/dsh/`.
+
+## Support
+
+If dsh-turnbar makes your long sessions easier to navigate, a ⭐ on
+[GitHub](https://github.com/rex178178/dsh-turnbar) helps other dsh users find it.
 
 ## License
 

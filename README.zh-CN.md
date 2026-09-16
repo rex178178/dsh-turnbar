@@ -1,8 +1,8 @@
 # dsh-turnbar
 
 [![npm version](https://img.shields.io/npm/v/dsh-turnbar)](https://www.npmjs.com/package/dsh-turnbar)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-turnbar)](https://www.npmjs.com/package/dsh-turnbar)
 [![license](https://img.shields.io/github/license/rex178178/dsh-turnbar)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/rex178178/dsh-turnbar)](https://github.com/rex178178/dsh-turnbar)
 
 **[English](README.md) | [简体中文](README.zh-CN.md)**
 
@@ -14,12 +14,14 @@ dsh-turnbar 给 DeepSeek Harness 的对话区加了一条视频播放器式的�
 
 ![悬停预览](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-hover.png)
 
+![悬停卡、拖动扫过与 ⌘K 搜索落图](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-scrub.gif)
+
 ## 安装
 
 三条路，任选其一：
 
 **① 插件市场（最省事）**：dsh 里打开 [dshmarket](https://github.com/dsh-market/dsh-market)
-市场，搜「turnbar」一键安装（市场收录申请中，收录前用下面的方式）。
+市场，搜「turnbar」一键安装。
 
 **② 命令行**：打开 Mac 的「终端」App（Terminal.app），粘贴：
 
@@ -65,6 +67,8 @@ npm install -g @deepseek-ai/dsh
 - ⌨️ **`⌘↑` / `⌘↓`**：从你正在读的位置逐轮上下走，空轮自动跳过。
 - ↩ **Esc 返回原位**：每次跳转后按 `Esc`（或点左下角提示条）精确回到跳转前的位置。
 - 🧩 **优雅降级**：哪天 dsh 改了 API 不兼容，插件会自己藏起来，绝不让你的会话崩掉。
+
+![⌘K 搜索——命中的轮次在条上泛琥珀色](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-search.png)
 
 ## 为什么还要再做一个导航插件？
 
@@ -141,6 +145,11 @@ pnpm build       # tsdown：lib/index.mjs（node 半区）+ lib/client.js（web 
 架构：双半区插件——node 半区把 `session/event` firehose 折叠成轮次记录（sidecar 持久化），
 经 `/plugins/dsh-turnbar/state` 提供给浏览器；web 半区把进度条渲染进官方 composer dock 插槽。
 所有 dsh API 接触面收敛在 `src/platform/dsh/`。
+
+## 支持这个项目
+
+如果 dsh-turnbar 让你的长会话好用了，去
+[GitHub](https://github.com/rex178178/dsh-turnbar) 点个 ⭐，能帮更多 dsh 用户发现它。
 
 ## License
 
