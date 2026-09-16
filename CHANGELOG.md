@@ -3,6 +3,16 @@
 All notable changes to **dsh-turnbar** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions respect semver.
 
+## [0.3.3] — 2026-09-17
+
+### Published
+
+- **npm 首个对外发布的 0.3.x 快照**。0.3.1/0.3.2 均未发布至 npm（版本号
+  跳过，npm 上 0.3.0 之后直接是 0.3.3）；本版本与生产验收通过的
+  `dsh-turnbar-0.3.2.tgz` 构建产物逐字节一致，包含下方 [0.3.2] 全部修复
+  内容（含"跳转不再高亮落点行"）。发布后生产 0.3.2 tarball 安装可原样
+  迁移至 `dsh-turnbar@0.3.3`。
+
 ## [0.3.2] — 2026-09-13
 
 ### Fixed（dsh 0.1.5 持久化接口换代适配）
