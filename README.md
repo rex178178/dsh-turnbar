@@ -84,25 +84,37 @@ and the bar always shows the **whole** conversation.
 
 ## Why yet another navigation plugin?
 
-Nine navigation plugins appeared in dsh's first four days — all of them are
-*rails, drawers, or dot chains*: a list of user messages you click through.
-dsh-turnbar is the only one shaped like a **video player**:
+The turn-navigation space filled up fast: dsh has shipped a **native turn rail**
+since `0.1.2`, and a couple of dozen community plugins now hang previews, search
+and bookmarks off it. Almost all of them are *rails, drawers, or dot chains* — a
+list of messages you click through. dsh-turnbar is the only one shaped like a
+**video player**: the whole session is a single always-visible full-width bar,
+sitting beside the native rail rather than replacing it.
 
-| | dsh-turnbar | dsh-navbar | dsh-chat-timeline | dsh-message-navigator | dsh-conversation-outline | dsh-codex-timeline | dsh-outline | dsh-chat-outline | dsh-message-preview | dsh-turn-marks |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Form | full-map bar, always visible | sliding dot window | official-rail clone (right rail) | outline drawer | sidebar outline tab | left rail (Codex-style) | outline overlay | left sidebar outline | right-edge navigator | left-turn strip |
-| Whole-conversation map (beyond loaded window) | ✅ event log | ❌ | ❌ | ❌ | ❌ | ⚠️ auto-loads history | ❌ | ⚠️ full mode on demand | ❌ | ❌ |
-| Drag scrub | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Rich hover meta (tools/files/tokens) | ✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ latency/tok-s only | ❌ | ❌ | ✅ preview | ✅ preview |
-| Context fuel gauge (window occupancy) | ✅ from usage events | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Search (whole conversation incl. assistant) | ✅ + results on the bar | ❌ | ❌ | user msgs only | ❌ | ⚠️ local browser-only | ⚠️ headings/keywords | ⚠️ keyword filter | ❌ | ❌ |
-| Chapter ticks (`/goal` milestones) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ markdown headings | ❌ | ❌ | ❌ |
-| Trajectory view jump | ✅ `⌘/Alt`+click | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Ctrl/Shift click | ❌ | ❌ |
-| `Esc` return | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Survives dsh upgrades | ✅ official slot + graceful degradation | ✅ | ✅ | ✅ | ⚠️ via better-sidebar | ❌ pins an exact dsh commit, uninstall before upgrading | ✅ | ✅ | ✅ | ✅ |
+Hover previews and click-to-jump are table stakes by now, so this table only
+carries what actually separates the closest few — including the rows where they
+are ahead of us:
 
-All of them are MIT and genuinely useful — dsh-turnbar just goes further on the
-*feel*: it's a video player, not a list. See also
+| | dsh-turnbar | native rail | dsh-milestone | dsh-message-rail | dsh-jumpbar | dsh-codex-timeline | dsh-navbar |
+|---|---|---|---|---|---|---|---|
+| Form | full-width bar (bottom dock) | built-in vertical rail | dot timeline (right) | left rail (Codex-style) | right-edge minimap strip | enhances the native rail | right-edge dot chain |
+| Whole session in one view | ✅ one bar | ❌ | ⚠️ dots + separate full list | ⚠️ full index, pages in on click | ⚠️ minimap of messages | ❌ | ❌ |
+| Drag scrub | ✅ drag across the bar | ❌ | ⚠️ wheel-scroll on dots | ❌ | ✅ drag on the strip | ❌ | ❌ |
+| Hover card: tools / files / context | ✅ | ❌ turn number only | ❌ time, duration, TTFT, tokens | ❌ text + time | ❌ text | ❌ content, time, tokens | ❌ |
+| Context fuel gauge (% of window, 80/95% warnings) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Chapter ticks (`/goal` milestones) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Search hits drawn on the map | ✅ amber segments, map kept | ❌ | ⚠️ filters the dots | ❌ | ❌ | ⚠️ result list | ❌ |
+| Cross-session search / bookmarks | ❌ | ❌ | ✅ both | ❌ | ❌ | ⚠️ bookmarks | ❌ |
+| `Esc` returns you to where you were | ✅ | ❌ | ❌ clears the search instead | ❌ | ❌ | ❌ | ❌ |
+| Upgrade safety | ✅ official slot, both persistence generations | — it is dsh | ✅ | ✅ | ✅ | ❌ pinned to `0.1.2-alpha.3` | ✅ |
+
+Being straight about it: cross-session search and `#msg=` deep-link bookmarks are
+[dsh-milestone](https://github.com/SnowCrescenter-tech/dsh-milestone)'s, and we
+don't have them yet; trajectory-view jump is shared with
+[dsh-chat-outline](https://github.com/liliuCourier/dsh-chat-outline). Still only
+here: the full-width map itself, the context fuel gauge, `/goal` chapter ticks,
+and `Esc`-return. All of these plugins are MIT and genuinely useful — dsh-turnbar
+just goes further on the *feel*: it's a video player, not a list. See also
 [Companions](#companions) below.
 
 ## Companions
@@ -130,11 +142,11 @@ Tested against dsh `0.1.5-rc.1` (web profile, handle-based persistence
 Both persistence generations are auto-detected at runtime, so history backfill
 works on either. Works with the official web UI's `conversation.composer.dock`
 slot; no patches, no UI hacks — which is the point: **upgrading dsh does not
-require uninstalling dsh-turnbar first.** The one plugin that does require that
-dance is
-[dsh-codex-timeline](https://github.com/Wine-Red/dsh-codex-timeline): it pins an
-exact dsh commit by replacing the official conversation adapter, so the upgrade
-checklist says "uninstall before upgrading". Different trade-off, stated plainly.
+require uninstalling dsh-turnbar first.** Plugins that hook in deeper pay for
+it: [dsh-codex-timeline](https://github.com/Wine-Red/dsh-codex-timeline) now
+enhances the built-in rail and supports exactly one dsh build
+(`0.1.2-alpha.3`), so its README carries a version matrix and a per-version
+install. Different trade-off, stated plainly.
 
 Coexists with other plugins that share the same `composer.dock` slot —
 [dsh-web-ui-all](https://www.npmjs.com/package/@linxin666/dsh-web-ui-all) and its

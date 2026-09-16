@@ -106,3 +106,25 @@
   兄弟误伤规则），无 JS、无 MutationObserver，确定性方案。
 - 验收：布局重现台场景 B/C/D `fullWidth===true` 且场景 C stats 保持 720；真机 profile turnbar-compat
   验证 ≥2 轮/1 轮/0 轮行为与交互冒烟均通过。
+
+## 8. D32 竞品全量复检 · 官方已内置轮次轨（2026-09-17）
+
+**结论：品类成熟、能力层大面积趋同；README 口径据此重写（同日提交，中英两版同步）。**
+
+- **官方内置轮次导航**：dsh 自 `0.1.2` 起提供原生 `TurnNavigator`（实证：本机
+  `@deepseek-ai/dsh-client-ui-chat/lib/client.js` 内 29 处引用；组件 `TurnNavigatorRail` +
+  `scroller/fadeTop/fadeBottom`；文案含 `turnNavigation.jump`「跳转到第 {turn} 轮」与
+  `turnNavigation.jumpLoad`，**无搜索**）。竞品随之改为"增强官方"：dsh-codex-timeline 自 0.6.0
+  起不再渲染独立时间线，且**只支持 `0.1.2-alpha.3`**（其 README 载有版本对照表）——旧说法
+  "钉死 dsh commit、升级前先卸"已作废。
+- **同类量级**：目录 3726 条里导航/轮次类数十家；头部 = dsh-navbar 53★、dsh-chat-timeline 31★、
+  dsh-milestone 24★、dsh-message-rail 15★、dsh-codex-timeline 9★、dsh-plugin-msg-nav 9★、
+  dsh-navigation-bar 7★、dsh-turn-scrubber 7★、dsh-session-nav 5★。
+- **八个卖点复核**：**仍独家** = 全宽条形态本身 / 上下文余量仪表（窗口占用 %，对手展示的是 token
+  用量）/ `/goal` 章节刻度 / 跳转后 `Esc` 回原位（对手的 Esc 是清空搜索或关闭面板）。**已不独家** =
+  拖动 scrub（dsh-jumpbar README 原文 "Drag to scrub"，右缘 minimap 条带）、富元信息卡
+  （milestone：时间·轮次·用时·结束原因·TTFT·tok/s·模型·用途·token，但**无工具调用数/改动文件**）、
+  会话内搜索（milestone 全文 + **跨会话**、codex-timeline 全文、turn-rail）、轨迹视图跳转（chat-outline）。
+  **我们缺** = 跨会话搜索、`#msg=` 书签深链（milestone 两者皆有）。
+- **口径原则（已落 README）**：独占性只对"形态"声明（全宽条 vs 细轨/圆点/抽屉/点链），能力项按
+  "我们独有 / 大家都有"分层，并**如实列出对手领先项**——比全绿的对比表更可信。
