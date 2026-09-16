@@ -1,5 +1,9 @@
 # dsh-turnbar
 
+[![npm version](https://img.shields.io/npm/v/dsh-turnbar)](https://www.npmjs.com/package/dsh-turnbar)
+[![license](https://img.shields.io/github/license/rex178178/dsh-turnbar)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/rex178178/dsh-turnbar)](https://github.com/rex178178/dsh-turnbar)
+
 **[English](README.md) | [简体中文](README.zh-CN.md)**
 
 > A progress bar for your agent conversations.
@@ -40,7 +44,7 @@ same command on your machine, exactly how you've been installing your other plug
 Restart dsh afterwards. Zero config; historical sessions are backfilled automatically
 and the bar always shows the **whole** conversation.
 
-![jump with highlight](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-jump.png)
+![jump to a turn](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-jump.png)
 
 ## Features
 
@@ -66,8 +70,8 @@ and the bar always shows the **whole** conversation.
 - 🧭 **Trajectory view jump** — `⌘/Alt` + click a segment opens the official
   *Trajectory* view and scrolls to that turn's row, centered and highlighted.
   Falls back to a normal in-chat jump when trajectory is unavailable (`v0.3`).
-- ⤴ **Click / drag to jump** — click a segment to land in ≤300 ms with a
-  highlight ring; press and drag to scrub through turns like a video timeline.
+- ⤴ **Click / drag to jump** — click a segment to land in ≤300 ms;
+  press and drag to scrub through turns like a video timeline.
   Jumps across unloaded history page it in automatically.
 - ⌨️ **`⌘↑` / `⌘↓`** — hop one turn at a time from where you're reading; empty
   turns are skipped automatically.

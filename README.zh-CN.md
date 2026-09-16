@@ -1,5 +1,9 @@
 # dsh-turnbar
 
+[![npm version](https://img.shields.io/npm/v/dsh-turnbar)](https://www.npmjs.com/package/dsh-turnbar)
+[![license](https://img.shields.io/github/license/rex178178/dsh-turnbar)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/rex178178/dsh-turnbar)](https://github.com/rex178178/dsh-turnbar)
+
 **[English](README.md) | [简体中文](README.zh-CN.md)**
 
 > 给你的 agent 会话装上一条视频进度条。
@@ -36,7 +40,7 @@ npm install -g @deepseek-ai/dsh
 
 装完**重启 dsh** 生效。零配置，历史会话自动回填，进度条永远显示**完整**会话。
 
-![跳转高亮](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-jump.png)
+![跳转落地](https://raw.githubusercontent.com/rex178178/dsh-turnbar/main/docs/demo-jump.png)
 
 ## 功能
 
@@ -47,8 +51,16 @@ npm install -g @deepseek-ai/dsh
   「该轮已终止，无对话内容」，不装懂。
 - 🔎 **会话内搜索**：进度条右端的放大镜按钮或 `⌘K` 都能唤起。搜你说过的，也搜 agent
   说过的，覆盖**整个会话**（包括没加载出来的历史）；结果带计数，↑↓ 选择时自动滚进
-  视野，回车直接落到进度条上。
-- ⤴ **点击 / 拖动跳转**：点一下 ≤300ms 落地并高亮；按住拖就像拖视频进度一样扫过各轮。
+  视野，回车直接落到进度条上。**结果还会直接画在进度条上**——命中的轮次泛琥珀色，
+  搜「TypeScript」一眼就能看到它在会话里的分布（v0.3）。
+- ⛽ **上下文余量仪表**：悬停任一轮就能看到"那一刻"的上下文占用（「上下文 62% · 余
+  38k」），80%/95% 阈值处颜色递进告警；最新一轮越过阈值时进度条尾端先泛琥珀色再变红——
+  不悬停也能发现油箱快空了（v0.3）。
+- 📑 **章节刻度**：`/goal` 轮在条上标出细刻度线，长会话因此有了看得见的"里程碑"，
+  不需要任何手工记账（v0.3）。
+- 🧭 **轨迹视图跳转**：`⌘/Alt` + 点某一段，打开官方 *Trajectory* 视图并滚到该轮
+  那一行、居中高亮；轨迹视图不可用时自动回落为普通会话内跳转（v0.3）。
+- ⤴ **点击 / 拖动跳转**：点一下 ≤300ms 即时落地；按住拖就像拖视频进度一样扫过各轮。
   目标轮还没加载时会自动翻页直到找到为止。
 - ⌨️ **`⌘↑` / `⌘↓`**：从你正在读的位置逐轮上下走，空轮自动跳过。
 - ↩ **Esc 返回原位**：每次跳转后按 `Esc`（或点左下角提示条）精确回到跳转前的位置。
@@ -59,15 +71,18 @@ npm install -g @deepseek-ai/dsh
 dsh 发布头四天里涌进来 9 个导航插件，但清一色是"导航轨 / 抽屉 / 点链"：给你一串
 用户消息让你点。dsh-turnbar 是唯一做成**播放器**形态的：
 
-| | dsh-turnbar | dsh-navbar | dsh-chat-timeline | dsh-message-navigator | dsh-conversation-outline |
-|---|---|---|---|---|---|
-| 形态 | 常驻全景进度条 | 滑动窗口点链 | 官网导航轨复刻（右侧细轨） | 大纲抽屉 | 侧栏大纲 tab |
-| 全会话地图（超出已加载窗口） | ✅ 事件日志 | ❌ | ❌ | ❌ | ❌ |
-| 拖动 scrub | ✅ | ❌ | ❌ | ❌ | ❌ |
-| 富元信息悬停卡（工具/文件/token） | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Esc 返回原位 | ✅ | ❌ | ❌ | ❌ | ❌ |
-| 会话内搜索 | ✅ 全文（用户+助手） | ❌ | ❌ | 仅用户消息 | ❌ |
-| 独立安装 | ✅ | ✅ | ✅ | ✅ | 依赖 better-sidebar |
+| | dsh-turnbar | dsh-navbar | dsh-chat-timeline | dsh-message-navigator | dsh-conversation-outline | dsh-codex-timeline | dsh-outline | dsh-chat-outline | dsh-message-preview | dsh-turn-marks |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 形态 | 常驻全景进度条 | 滑动窗口点链 | 官网导航轨复刻（右侧细轨） | 大纲抽屉 | 侧栏大纲 tab | 左侧细轨（Codex 风格） | 大纲浮层 | 左侧边栏大纲 | 右侧边导航 | 左侧轮次窄条 |
+| 全会话地图（超出已加载窗口） | ✅ 事件日志 | ❌ | ❌ | ❌ | ❌ | ⚠️ 自动加载历史 | ❌ | ⚠️ 按需全量模式 | ❌ | ❌ |
+| 拖动 scrub | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 富元信息悬停卡（工具/文件/token） | ✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ 仅延迟/token 数 | ❌ | ❌ | ✅ 预览 | ✅ 预览 |
+| 上下文余量仪表（窗口占用） | ✅ 来自 usage 事件 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 会话内搜索（全文，含助手消息） | ✅ 且结果画在条上 | ❌ | ❌ | 仅用户消息 | ❌ | ⚠️ 仅浏览器本地 | ⚠️ 标题/关键词 | ⚠️ 关键词过滤 | ❌ | ❌ |
+| 章节刻度（`/goal` 里程碑） | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ 标题层级 | ❌ | ❌ | ❌ |
+| 轨迹视图跳转 | ✅ `⌘/Alt`+点击 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Ctrl/Shift 点击 | ❌ | ❌ |
+| `Esc` 返回原位 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 升级 dsh 不破 | ✅ 官方插槽 + 优雅降级 | ✅ | ✅ | ✅ | ⚠️ 经 better-sidebar | ❌ 钉死具体 dsh commit，升级前先卸 | ✅ | ✅ | ✅ | ✅ |
 
 它们都是 MIT 协议、各有各的好——dsh-turnbar 只是在"手感"上走得更远：**它是播放器，不是列表。**
 想搭配使用的话见下面。
@@ -89,18 +104,31 @@ dsh 发布头四天里涌进来 9 个导航插件，但清一色是"导航轨 / 
 
 ## 兼容性
 
-已在 dsh `0.1.0-rc.5` / `0.1.0-rc.6`（web profile）实测。挂在官方
-`conversation.composer.dock` 插槽上，无 patch、无 UI hack。
+已在 dsh `0.1.5-rc.1`（web profile，句柄制持久化 `open/read/close`）与
+`0.1.0-rc.7`（一步式 `inspect`/`readRaw` 持久化）实测。两代持久化运行时自动
+探测，历史回填两代都通。挂在官方 web UI 的 `conversation.composer.dock`
+插槽上，无 patch、无 UI hack——这正是要点：**升级 dsh 不需要先卸载
+dsh-turnbar**。唯一需要先卸载的是
+[dsh-codex-timeline](https://github.com/Wine-Red/dsh-codex-timeline)：它用替换
+官方会话适配器的方式钉死某个 dsh commit，所以它的升级清单写着"升级前先卸"。
+取舍不同，直说无妨。
 
-和其他占用同一 `composer.dock` 插槽的插件（[dsh-web-ui-all](https://www.npmjs.com/package/@linxin666/dsh-web-ui-all)
-及其内含的 dsh-live-stats / dsh-aionui-panel）可以同槽共存：内置的**共存 CSS 层**
-（v0.2.2+）把 dock 强制成可换行的行排，进度条永远独占自己一整行，官方统计行仍
-靠在任意第三方条目旁边，进度条绝不被挤扁。单轮会话现在也显示一条 1 段进度条
-（只有全新的 0 轮会话保持隐藏）。
+和其他占用同一 `composer.dock` 插槽的插件
+（[dsh-web-ui-all](https://www.npmjs.com/package/@linxin666/dsh-web-ui-all)
+及其内含的 dsh-live-stats / dsh-aionui-panel）可以同槽共存：内置的**共存 CSS
+层**（v0.2.2+）把 dock 强制成可换行的行排，进度条永远独占自己一整行，官方
+统计行靠在任意第三方条目旁，进度条绝不被挤扁。单轮会话现在也显示一条
+1 段进度条（只有全新的 0 轮会话保持隐藏）。
+
+| dsh 版本 | 状态 |
+|---|---|
+| 0.1.5+（web，句柄制持久化） | ✅ 全功能 |
+| 0.1.0-rc.5 – 0.1.1-rc.x（web，inspect/readRaw） | ✅ 全功能（旧链） |
+| 更旧 / 非 web profile | 插件保持惰性，什么都不破坏 |
 
 ## Roadmap
 
-- v1.0：章节自动分段（任务边界）、书签、token/上下文余量仪表
+- 下一步：任务边界章节（不止 `/goal`）、书签、trajectory ↔ 聊天往返打磨。
 
 ## 开发
 
